@@ -135,8 +135,7 @@ export const verificarElegibilidadPostulacion = onCall(
     memory: '256MiB',
     timeoutSeconds: 15,
     maxInstances: 30,
-    // ⚠️ Descomenta la siguiente línea DESPUÉS de configurar App Check en Firebase Console
-    //enforceAppCheck: true,
+    enforceAppCheck: true,
   },
   async (request) => {
     try {
@@ -216,8 +215,7 @@ export const crearPostulacion = onCall(
     memory: '512MiB',
     timeoutSeconds: 60,
     maxInstances: 20,
-    // ⚠️ Descomenta la siguiente línea DESPUÉS de configurar App Check en Firebase Console
-    // enforceAppCheck: true,
+    enforceAppCheck: true,
   },
   async (request) => {
     // ── 1. Validar payload completo con Zod ──

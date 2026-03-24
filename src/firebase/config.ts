@@ -1,4 +1,5 @@
 import { initializeApp, getApp, getApps } from 'firebase/app'
+import { initializeAppCheck, ReCaptchaV3Provider } from 'firebase/app-check'
 import { getAuth } from 'firebase/auth'
 import { getFirestore, initializeFirestore, memoryLocalCache, setLogLevel } from 'firebase/firestore'
 import { getStorage } from 'firebase/storage'
@@ -18,6 +19,41 @@ const firebaseConfig = {
 
 // Evitar inicializar la app más de una vez durante HMR (Hot Module Replacement)
 const app = getApps().length > 0 ? getApp() : initializeApp(firebaseConfig)
+
+/** Obligatorio en cliente si las callables usan enforceAppCheck: true */
+function initAppCheckIfNeeded(firebaseApp: ReturnType<typeof getApp>): void {
+  if (typeof window === 'undefined') return
+
+  const siteKey = String(import.meta.env.VITE_RECAPTCHA_SITE_KEY || '').trim()
+  if (!siteKey) {
+    if (import.meta.env.PROD) {
+      console.error(
+        '[App Check] Falta VITE_RECAPTCHA_SITE_KEY. Las callables con enforceAppCheck fallarán hasta configurarla.',
+      )
+    }
+    return
+  }
+
+  if (import.meta.env.DEV) {
+    const fixed = String(import.meta.env.VITE_APPCHECK_DEBUG_TOKEN || '').trim()
+    const w = globalThis as typeof globalThis & { FIREBASE_APPCHECK_DEBUG_TOKEN?: boolean | string }
+    w.FIREBASE_APPCHECK_DEBUG_TOKEN = fixed.length > 0 ? fixed : true
+  }
+
+  try {
+    initializeAppCheck(firebaseApp, {
+      provider: new ReCaptchaV3Provider(siteKey),
+      isTokenAutoRefreshEnabled: true,
+    })
+  } catch (e) {
+    const msg = e instanceof Error ? e.message : String(e)
+    if (!/already been initialized|already initialized/i.test(msg)) {
+      console.error('[App Check] No se pudo inicializar:', e)
+    }
+  }
+}
+
+initAppCheckIfNeeded(app)
 
 // Inicializar Firestore solo si no ha sido inicializado antes, para evitar el error de "already been called"
 let db: ReturnType<typeof getFirestore>
