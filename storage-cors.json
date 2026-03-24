@@ -1,0 +1,8 @@
+[
+  {
+    "origin": ["http://localhost:5173", "http://localhost:3000", "http://127.0.0.1:5173", "https://beca-muni-2026.web.app", "https://beca-muni-2026.firebaseapp.com"],
+    "method": ["GET", "HEAD"],
+    "maxAgeSeconds": 3600,
+    "responseHeader": ["Content-Type", "Content-Length", "Content-Disposition"]
+  }
+]

@@ -1,0 +1,57 @@
+rules_version = '2';
+
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    // Helper: check if the user is authenticated
+    function isAuthenticated() {
+      return request.auth != null;
+    }
+
+    // Helper: get the user's role from /users/{uid}
+    function getUserRole() {
+      return get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role;
+    }
+
+    function isSuperadmin() {
+      return isAuthenticated() && getUserRole() == 'superadmin';
+    }
+
+    function isRevisorOrAdmin() {
+      return isAuthenticated() && getUserRole() in ['superadmin', 'revisor', 'admin'];
+    }
+
+    // Historical RUTs: public can check a specific RUT, but cannot list all
+    match /historical_ruts/{rutId} {
+      allow get: if true;
+      allow list: if isRevisorOrAdmin();
+      allow write: if isSuperadmin();
+    }
+
+    // Postulantes: lectura/escritura solo vía Cloud Function (Admin SDK). Sin acceso directo desde el cliente.
+    match /postulantes/{postId} {
+      allow create, get, list, update, delete: if false;
+    }
+
+    // Users/roles: each user can only read their own doc; superadmin can read all; only superadmin can write
+    match /users/{userId} {
+      allow read: if isAuthenticated() && (request.auth.uid == userId || isSuperadmin());
+      allow write: if isSuperadmin();
+    }
+
+    // Config del filtro de puntaje: revisor/admin puede leer y escribir
+    match /config/filtro_puntaje {
+      allow read, write: if isRevisorOrAdmin();
+    }
+
+    // Config del filtro de revisión de documentación
+    match /config/filtro_revision_doc {
+      allow read, write: if isRevisorOrAdmin();
+    }
+
+    // Config del criterio de desempate
+    match /config/filtro_desempate {
+      allow read, write: if isRevisorOrAdmin();
+    }
+  }
+}

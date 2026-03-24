@@ -1,0 +1,21 @@
+rules_version = '2';
+
+service firebase.storage {
+  match /b/{bucket}/o {
+    match /postulaciones/{allPaths=**} {
+      // CREATE y UPDATE: público (postulantes no están logueados)
+      // Permite nombres descriptivos fijos; update para reintentos si falla Firestore.
+      // Tamaño máximo: 500 KB (500 * 1024 bytes)
+      allow create, update: if request.resource.size < 500 * 1024
+                            && request.resource.contentType.matches('application/pdf');
+
+      // READ: solo personal autenticado con rol de gestión (misma idea que callables de revisión).
+      allow read: if request.auth != null
+        && firestore.get(/databases/(default)/documents/users/$(request.auth.uid)).data.role in ['superadmin', 'revisor', 'admin'];
+
+      // DELETE: mismo conjunto de roles (el borrado masivo de un postulante lo hace Admin SDK en Cloud Function).
+      allow delete: if request.auth != null
+        && firestore.get(/databases/(default)/documents/users/$(request.auth.uid)).data.role in ['superadmin', 'revisor', 'admin'];
+    }
+  }
+}
