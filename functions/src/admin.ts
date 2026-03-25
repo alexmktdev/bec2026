@@ -1,3 +1,4 @@
+import './functionsInit'
 import * as admin from 'firebase-admin'
 import { HttpsError, onCall } from 'firebase-functions/v2/https'
 import type {

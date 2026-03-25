@@ -7,9 +7,9 @@
  * - Validación de payload con Zod (en lugar de `as` type assertions)
  * - Recibe rutas de Storage (no URLs); genera URLs de descarga con Admin SDK
  */
+import './functionsInit'
 import * as admin from 'firebase-admin'
 import { HttpsError, onCall } from 'firebase-functions/v2/https'
-import { setGlobalOptions } from 'firebase-functions/v2'
 
 import type {
   DocumentosSubidos,
@@ -28,8 +28,6 @@ import { normalizeRut, rutTieneFormatoMinimo, validarRutMatematico } from '../..
 import { CrearPostulacionPayloadSchema } from '../../src/postulacion/shared/payloadValidation'
 import { webCallableBase } from './httpsCallableDefaults'
 import { enqueueRechazoEntradaEmail } from './triggerEmailRechazoEntrada'
-
-setGlobalOptions({ region: 'us-central1', maxInstances: 10 })
 
 if (!admin.apps.length) {
   admin.initializeApp()

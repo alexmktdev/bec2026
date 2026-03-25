@@ -6,7 +6,7 @@ import { getFunctions, httpsCallable, type HttpsCallableResult } from 'firebase/
 import app from '../firebase/config'
 import type { DocumentosSubidos, PostulanteData } from '../types/postulante'
 
-const region = (import.meta.env.VITE_FUNCTIONS_REGION as string | undefined) || 'us-central1'
+const region = (import.meta.env.VITE_FUNCTIONS_REGION as string | undefined) || 'southamerica-west1'
 
 function functionsInstance() {
   return getFunctions(app, region)
