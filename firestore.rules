@@ -33,6 +33,12 @@ service cloud.firestore {
       allow create, get, list, update, delete: if false;
     }
 
+    // Cola Trigger Email (colección por defecto de la extensión). Si usas otra en TRIGGER_EMAIL_COLLECTION,
+    // añade aquí un bloque match equivalente con el mismo nombre de colección.
+    match /mail/{mailId} {
+      allow read, write: if false;
+    }
+
     // Users/roles: each user can only read their own doc; superadmin can read all; only superadmin can write
     match /users/{userId} {
       allow read: if isAuthenticated() && (request.auth.uid == userId || isSuperadmin());

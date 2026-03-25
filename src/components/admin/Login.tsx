@@ -34,13 +34,27 @@ export function Login() {
         await requestPasswordReset(email)
         setResetSent(true)
       }
-    } catch (err: any) {
-      if (err.message === 'ACCESO_BLOQUEADO') {
-        setError('Acceso bloqueado por seguridad (demasiados intentos fallidos). Por favor, utilice la opción de recuperar contraseña para reactivar su cuenta.')
+    } catch (err: unknown) {
+      const msg = err instanceof Error ? err.message : ''
+      const appCheckMsg =
+        'No se pudo verificar la seguridad (App Check). Compruebe: dominio en reCAPTCHA, VITE_RECAPTCHA_SITE_KEY en Vercel, ' +
+        'si en Firebase usó reCAPTCHA Enterprise ponga VITE_APPCHECK_USE_ENTERPRISE=true, sin bloqueadores; si ve “throttle” en consola, espere 1–2 min y reintente.'
+      if (msg === 'ACCESO_BLOQUEADO') {
+        setError(
+          'Acceso bloqueado por seguridad (demasiados intentos fallidos). Por favor, utilice la opción de recuperar contraseña para reactivar su cuenta.',
+        )
+      } else if (
+        msg === 'APP_CHECK_NOT_CONFIGURED' ||
+        msg === 'APP_CHECK_NOT_INITIALIZED' ||
+        msg === 'APP_CHECK_TOKEN_FAILED' ||
+        msg === 'APP_CHECK_CALL_FAILED'
+      ) {
+        setError(appCheckMsg)
       } else {
-        setError(view === 'login' 
-          ? 'Credenciales incorrectas. Verifique su email y contraseña.'
-          : 'No se pudo procesar la solicitud. Verifique que el correo sea correcto.'
+        setError(
+          view === 'login'
+            ? 'Credenciales incorrectas. Verifique su email y contraseña.'
+            : 'No se pudo procesar la solicitud. Verifique que el correo sea correcto.',
         )
       }
     } finally {

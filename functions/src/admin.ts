@@ -11,6 +11,7 @@ import {
   obtenerSnapshotsPostulantesPorIds,
   ordenarDocsPostulantesComoEnPanel,
 } from './postulantesOrdenPanel'
+import { webCallableBase } from './httpsCallableDefaults'
 import { calcularPuntajeTotal } from '../../src/postulacion/shared/scoring'
 
 /** Campos que el panel puede enviar; nunca assignedTo, id, createdAt ni puntaje (se recalcula en servidor). */
@@ -126,7 +127,7 @@ async function verifySuperAdmin(uid: string, db: admin.firestore.Firestore): Pro
 // 1. Asignar Tramos
 // -------------------------------------------------------------
 export const asignarTramosRevisores = onCall(
-  { cors: true, invoker: 'public', memory: '512MiB', timeoutSeconds: 60, maxInstances: 5 },
+  { ...webCallableBase(), memory: '512MiB', timeoutSeconds: 60, maxInstances: 5 },
   async (request) => {
     const callerUid = request.auth?.uid
     const { assignments, scopePostulanteIds } = request.data as {
@@ -321,7 +322,7 @@ export const asignarTramosRevisores = onCall(
 )
 
 export const obtenerTramosRevisores = onCall(
-  { cors: true, invoker: 'public', memory: '256MiB', timeoutSeconds: 20, maxInstances: 10 },
+  { ...webCallableBase(), memory: '256MiB', timeoutSeconds: 20, maxInstances: 10 },
   async (request) => {
     const callerUid = request.auth?.uid
     if (!callerUid) throw new HttpsError('unauthenticated', 'Debe iniciar sesión.')
@@ -376,7 +377,7 @@ export const obtenerTramosRevisores = onCall(
 // 2. Historial de Auditoría
 // -------------------------------------------------------------
 export const registrarAccionAdmin = onCall(
-  { cors: true, invoker: 'public', memory: '256MiB', timeoutSeconds: 20, maxInstances: 10 },
+  { ...webCallableBase(), memory: '256MiB', timeoutSeconds: 20, maxInstances: 10 },
   async (request) => {
     const callerUid = request.auth?.uid
     const { action, targetUid, details } = request.data
@@ -416,7 +417,7 @@ export const registrarAccionAdmin = onCall(
 )
 
 export const obtenerLogsAuditoria = onCall(
-  { cors: true, invoker: 'public', memory: '256MiB', timeoutSeconds: 30, maxInstances: 5 },
+  { ...webCallableBase(), memory: '256MiB', timeoutSeconds: 30, maxInstances: 5 },
   async (request) => {
     const callerUid = request.auth?.uid
     if (!callerUid) throw new HttpsError('unauthenticated', 'Debe iniciar sesión.')
@@ -447,7 +448,7 @@ export const obtenerLogsAuditoria = onCall(
 // 3. Extracción de Postulantes Segura (Backend Filtering)
 // -------------------------------------------------------------
 export const obtenerPostulantesRevisor = onCall(
-  { cors: true, invoker: 'public', memory: '512MiB', timeoutSeconds: 60, maxInstances: 10 },
+  { ...webCallableBase(), memory: '512MiB', timeoutSeconds: 60, maxInstances: 10 },
   async (request) => {
     const callerUid = request.auth?.uid
     if (!callerUid) throw new HttpsError('unauthenticated', 'Debe iniciar sesión.')
@@ -529,7 +530,7 @@ function sanitizePostulanteUpdatePayload(raw: unknown): Record<string, unknown> 
 }
 
 export const obtenerPostulanteRevisor = onCall(
-  { cors: true, invoker: 'public', memory: '256MiB', timeoutSeconds: 20, maxInstances: 10 },
+  { ...webCallableBase(), memory: '256MiB', timeoutSeconds: 20, maxInstances: 10 },
   async (request) => {
     const callerUid = request.auth?.uid
     if (!callerUid) throw new HttpsError('unauthenticated', 'Debe iniciar sesión.')
@@ -558,7 +559,7 @@ export const obtenerPostulanteRevisor = onCall(
 )
 
 export const actualizarPostulanteRevisor = onCall(
-  { cors: true, invoker: 'public', memory: '256MiB', timeoutSeconds: 30, maxInstances: 10 },
+  { ...webCallableBase(), memory: '256MiB', timeoutSeconds: 30, maxInstances: 10 },
   async (request) => {
     const callerUid = request.auth?.uid
     if (!callerUid) throw new HttpsError('unauthenticated', 'Debe iniciar sesión.')
@@ -615,7 +616,7 @@ export const actualizarPostulanteRevisor = onCall(
 )
 
 export const eliminarPostulanteRevisor = onCall(
-  { cors: true, invoker: 'public', memory: '512MiB', timeoutSeconds: 90, maxInstances: 5 },
+  { ...webCallableBase(), memory: '512MiB', timeoutSeconds: 90, maxInstances: 5 },
   async (request) => {
     const callerUid = request.auth?.uid
     if (!callerUid) throw new HttpsError('unauthenticated', 'Debe iniciar sesión.')
@@ -670,7 +671,7 @@ export const eliminarPostulanteRevisor = onCall(
 )
 
 export const obtenerPostulantesRechazadosEntrada = onCall(
-  { cors: true, invoker: 'public', memory: '256MiB', timeoutSeconds: 30, maxInstances: 10 },
+  { ...webCallableBase(), memory: '256MiB', timeoutSeconds: 30, maxInstances: 10 },
   async (request) => {
     const callerUid = request.auth?.uid
     if (!callerUid) throw new HttpsError('unauthenticated', 'Debe iniciar sesión.')

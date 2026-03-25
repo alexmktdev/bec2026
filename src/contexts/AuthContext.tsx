@@ -9,7 +9,7 @@ import {
 import type { User } from 'firebase/auth'
 import { doc, getDoc } from 'firebase/firestore'
 import { httpsCallable } from 'firebase/functions'
-import { auth, db, functions } from '../firebase/config'
+import { auth, db, functions, prepareCallableSecurity } from '../firebase/config'
 import type { UserRole } from '../types/postulante'
 
 interface AuthContextValue {
@@ -61,11 +61,27 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     return unsubscribe
   }, [])
 
+  function isCallableAppCheckRejection(e: unknown): boolean {
+    const code =
+      typeof e === 'object' && e !== null && 'code' in e ? String((e as { code: string }).code) : ''
+    return code === 'functions/unauthenticated' || code === 'functions/failed-precondition'
+  }
+
   async function signIn(email: string, password: string) {
-    // 1. Verificar si está bloqueado preventivamente (en el backend)
+    await prepareCallableSecurity()
+
     const checkFn = httpsCallable<{ email: string }, { bloqueado: boolean }>(functions, 'verificarEstadoBloqueo')
-    const { data: { bloqueado } } = await checkFn({ email })
-    
+    let bloqueado = false
+    try {
+      const { data } = await checkFn({ email })
+      bloqueado = !!data?.bloqueado
+    } catch (e) {
+      if (isCallableAppCheckRejection(e)) {
+        throw new Error('APP_CHECK_CALL_FAILED')
+      }
+      throw e
+    }
+
     if (bloqueado) {
       throw new Error('ACCESO_BLOQUEADO')
     }
@@ -73,17 +89,28 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     try {
       await signInWithEmailAndPassword(auth, email, password)
     } catch (err) {
-      // 2. Registrar fallo en el backend si el error es de credenciales
-      const regFn = httpsCallable<{ email: string }, { ok: boolean }>(functions, 'registrarIntentoFallido')
-      await regFn({ email })
+      try {
+        await prepareCallableSecurity()
+        const regFn = httpsCallable<{ email: string }, { ok: boolean }>(functions, 'registrarIntentoFallido')
+        await regFn({ email })
+      } catch {
+        // No bloquear el flujo de “credenciales incorrectas” si el registro de intento falla
+      }
       throw err
     }
   }
 
   async function requestPasswordReset(email: string) {
-    // 1. Desbloqueamos en el backend (resetea contador)
+    await prepareCallableSecurity()
     const resetFn = httpsCallable<{ email: string }, { ok: boolean }>(functions, 'solicitarRecuperacionPassword')
-    await resetFn({ email })
+    try {
+      await resetFn({ email })
+    } catch (e) {
+      if (isCallableAppCheckRejection(e)) {
+        throw new Error('APP_CHECK_CALL_FAILED')
+      }
+      throw e
+    }
     
     // 2. Enviamos el correo real usando el SDK de cliente
     // Esto es lo que dispara el envío de Google y usa tu template personalizado.

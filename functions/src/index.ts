@@ -26,6 +26,8 @@ import {
 } from '../../src/postulacion/shared/businessRules'
 import { normalizeRut, rutTieneFormatoMinimo, validarRutMatematico } from '../../src/postulacion/shared/rut'
 import { CrearPostulacionPayloadSchema } from '../../src/postulacion/shared/payloadValidation'
+import { webCallableBase } from './httpsCallableDefaults'
+import { enqueueRechazoEntradaEmail } from './triggerEmailRechazoEntrada'
 
 setGlobalOptions({ region: 'us-central1', maxInstances: 10 })
 
@@ -78,6 +80,7 @@ async function registrarRechazoEntradaEnFirestore(
     updatedAt: now,
   }
   await db.collection('postulantes_rechazados_entrada').doc(rutNormalizado).set(registro, { merge: true })
+  await enqueueRechazoEntradaEmail(db, registro)
 }
 
 /**
@@ -130,12 +133,10 @@ async function generarUrlsDescarga(
 
 export const verificarElegibilidadPostulacion = onCall(
   {
-    cors: true,
-    invoker: 'public',
+    ...webCallableBase(),
     memory: '256MiB',
     timeoutSeconds: 15,
     maxInstances: 30,
-    enforceAppCheck: true,
   },
   async (request) => {
     try {
@@ -172,7 +173,7 @@ export const verificarElegibilidadPostulacion = onCall(
 )
 
 export const registrarPostulanteRechazadoEntrada = onCall(
-  { cors: true, invoker: 'public', memory: '256MiB', timeoutSeconds: 20, maxInstances: 20 },
+  { ...webCallableBase(), memory: '256MiB', timeoutSeconds: 20, maxInstances: 20 },
   async (request) => {
     const payload = request.data as { data?: PostulanteData; reason?: string; message?: string }
     const data = payload?.data
@@ -210,12 +211,10 @@ export const registrarPostulanteRechazadoEntrada = onCall(
 
 export const crearPostulacion = onCall(
   {
-    cors: true,
-    invoker: 'public',
+    ...webCallableBase(),
     memory: '512MiB',
     timeoutSeconds: 60,
     maxInstances: 20,
-    enforceAppCheck: true,
   },
   async (request) => {
     // ── 1. Validar payload completo con Zod ──
@@ -305,7 +304,7 @@ export const crearPostulacion = onCall(
  * Registra un intento fallido de login. Bloquea si llega a 3.
  */
 export const registrarIntentoFallido = onCall(
-  { cors: true, invoker: 'public', memory: '256MiB', timeoutSeconds: 15, maxInstances: 20 },
+  { ...webCallableBase(), memory: '256MiB', timeoutSeconds: 15, maxInstances: 20 },
   async (request) => {
     const { email } = request.data
     if (!email || typeof email !== 'string') throw new HttpsError('invalid-argument', 'Email requerido.')
@@ -346,7 +345,7 @@ export const registrarIntentoFallido = onCall(
  * Verifica si un correo está bloqueado antes de intentar login.
  */
 export const verificarEstadoBloqueo = onCall(
-  { cors: true, invoker: 'public', memory: '256MiB', timeoutSeconds: 10, maxInstances: 20 },
+  { ...webCallableBase(), memory: '256MiB', timeoutSeconds: 10, maxInstances: 20 },
   async (request) => {
     const { email } = request.data
     if (!email || typeof email !== 'string') throw new HttpsError('invalid-argument', 'Email requerido.')
@@ -370,7 +369,7 @@ export const verificarEstadoBloqueo = onCall(
  * que use la infraestructura de envío directo de Firebase.
  */
 export const solicitarRecuperacionPassword = onCall(
-  { cors: true, invoker: 'public', memory: '256MiB', timeoutSeconds: 15, maxInstances: 10 },
+  { ...webCallableBase(), memory: '256MiB', timeoutSeconds: 15, maxInstances: 10 },
   async (request) => {
     const { email } = request.data
     if (!email || typeof email !== 'string') throw new HttpsError('invalid-argument', 'Email requerido.')
@@ -399,7 +398,7 @@ export const solicitarRecuperacionPassword = onCall(
  * Solo accesible por superadmin.
  */
 export const obtenerUsuariosAdmin = onCall(
-  { cors: true, invoker: 'public', memory: '256MiB', timeoutSeconds: 20, maxInstances: 5 },
+  { ...webCallableBase(), memory: '256MiB', timeoutSeconds: 20, maxInstances: 5 },
   async (request) => {
     // 1. Verificar sesión y rol
     const uid = request.auth?.uid
@@ -432,7 +431,7 @@ export const obtenerUsuariosAdmin = onCall(
  * Solo accesible por superadmin.
  */
 export const cambiarEstadoUsuario = onCall(
-  { cors: true, invoker: 'public', memory: '256MiB', timeoutSeconds: 30, maxInstances: 5 },
+  { ...webCallableBase(), memory: '256MiB', timeoutSeconds: 30, maxInstances: 5 },
   async (request) => {
     // 1. Verificar sesión y rol
     const callerUid = request.auth?.uid
@@ -464,7 +463,7 @@ export const cambiarEstadoUsuario = onCall(
       })
 
       return { ok: true }
-} catch (e) {
+    } catch (e) {
       console.error('Error cambiarEstadoUsuario:', e)
       throw new HttpsError('internal', 'No se pudo cambiar el estado del usuario.')
     }

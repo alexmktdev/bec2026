@@ -134,4 +134,8 @@ export interface PostulanteRechazadoEntrada extends PostulanteData {
   source: 'verificacion' | 'creacion' | 'frontend'
   createdAt: string
   updatedAt: string
+  /** Seteado por Cloud Function al encolar correo (extensión Trigger Email). */
+  emailNotificacionEncoladaAt?: string
+  emailNotificacionColaDocId?: string
+  emailNotificacionColaEstado?: 'encolado'
 }
