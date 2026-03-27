@@ -67,3 +67,29 @@ export function formatDateTime(isoString: string | undefined | null): string {
   }
 }
 
+/**
+ * Formatea fecha/hora en formato "DD-MM-YYYY HH:mm".
+ * Si el valor no trae hora (ej. YYYY-MM-DD), devuelve solo "DD-MM-YYYY".
+ */
+export function formatDateTimeDmyHm(value: string | undefined | null): string {
+  if (!value) return '—'
+
+  const raw = String(value).trim()
+  if (!raw) return '—'
+
+  // Caso fecha simple (YYYY-MM-DD): mantenemos sin hora para evitar "00:00" artificial.
+  if (/^\d{4}-\d{2}-\d{2}$/.test(raw)) {
+    return formatDate(raw)
+  }
+
+  const d = new Date(raw)
+  if (Number.isNaN(d.getTime())) return '—'
+
+  const dd = String(d.getDate()).padStart(2, '0')
+  const mm = String(d.getMonth() + 1).padStart(2, '0')
+  const yyyy = d.getFullYear()
+  const hh = String(d.getHours()).padStart(2, '0')
+  const min = String(d.getMinutes()).padStart(2, '0')
+  return `${dd}-${mm}-${yyyy} ${hh}:${min}`
+}
+

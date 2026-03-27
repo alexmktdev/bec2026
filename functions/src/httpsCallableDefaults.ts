@@ -10,9 +10,16 @@ import { getCallableCorsOrigins } from './allowedWebOrigins'
  * es independiente y puede bloquear SDKs o scripts sin token; hazlo solo si lo necesitas.
  */
 export function webCallableBase() {
+  // En el emulador de Functions, App Check no aplica; en Cloud (deploy) sí.
+  const runningInFunctionsEmulator = process.env.FUNCTIONS_EMULATOR === 'true'
   return {
     cors: getCallableCorsOrigins(),
     invoker: 'public' as const,
-    enforceAppCheck: true,
+    enforceAppCheck: !runningInFunctionsEmulator,
   }
 }
+
+
+
+
+

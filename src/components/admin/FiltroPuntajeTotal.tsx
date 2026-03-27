@@ -7,12 +7,15 @@ import { PostulanteDetail } from './PostulanteDetail'
 import { AdminLayout } from './AdminLayout'
 import { exportarExcel } from '../../services/excelExport'
 import { descargarTodosDocumentos } from '../../services/zipDownload'
+import { useAuth } from '../../hooks/useAuth'
 
 function puntajeLabel(p: number) {
   return `>=${p} puntos`
 }
 
 export function FiltroPuntajeTotal() {
+  const { userRole } = useAuth()
+  const canManageFiltroPuntaje = userRole?.role === 'superadmin'
   const { postulantes, loading, errorPostulantes, puntajeAplicado, setFiltroPuntaje, clearFiltro, refrescarPostulantes, actualizarPostulanteLocal, eliminarPostulanteLocal } = useAdminFilter()
   const [selected, setSelected] = useState<PostulanteFirestore | null>(null)
   const [exportando, setExportando] = useState<string | null>(null)
@@ -38,6 +41,7 @@ export function FiltroPuntajeTotal() {
   }
 
   async function handleFiltrarPuntaje() {
+    if (!canManageFiltroPuntaje) return
     if (filtrandoPuntaje) return
     setFiltrandoPuntaje(true)
     const filtrados = postulantes.filter((p) => p.puntaje.total >= puntajeSeleccionado)
@@ -137,7 +141,7 @@ export function FiltroPuntajeTotal() {
                 value={puntajeSeleccionado}
                 onChange={(e) => setPuntajeSeleccionado(parseInt(e.target.value, 10))}
                 className="rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm text-slate-900 shadow-sm focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500"
-                disabled={filtrandoPuntaje}
+                disabled={filtrandoPuntaje || !canManageFiltroPuntaje}
               >
                 <option value={30}>{puntajeLabel(30)}</option>
                 <option value={40}>{puntajeLabel(40)}</option>
@@ -151,7 +155,7 @@ export function FiltroPuntajeTotal() {
             <button
               type="button"
               onClick={handleFiltrarPuntaje}
-              disabled={filtrandoPuntaje || loading}
+              disabled={filtrandoPuntaje || loading || !canManageFiltroPuntaje}
               className="flex items-center justify-center gap-2 rounded-xl bg-red-700 px-8 py-4 text-sm font-semibold text-white shadow-sm hover:bg-red-800 disabled:opacity-50"
             >
               {filtrandoPuntaje ? (
@@ -166,6 +170,12 @@ export function FiltroPuntajeTotal() {
               )}
             </button>
           </div>
+          {!canManageFiltroPuntaje && (
+            <div className="rounded-xl border border-amber-200 bg-amber-50 p-3 text-xs font-medium text-amber-800">
+              El filtro de puntaje solo puede ser gestionado por Superadmin. Como revisor, esta vista es de solo lectura y
+              refleja el filtro vigente.
+            </div>
+          )}
 
           {/* Action buttons (filtrados) */}
           <div className="flex flex-wrap gap-2">
@@ -181,7 +191,7 @@ export function FiltroPuntajeTotal() {
               Actualizar
             </button>
 
-            {puntajeAplicado != null && (
+            {canManageFiltroPuntaje && puntajeAplicado != null && (
               <button
                 type="button"
                 onClick={() => clearFiltro()}

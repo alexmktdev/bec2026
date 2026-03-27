@@ -1,4 +1,10 @@
 {
+  "emulators": {
+    "functions": {
+      "port": 5001
+    },
+    "singleProjectMode": true
+  },
   "storage": {
     "rules": "storage.rules"
   },

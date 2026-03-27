@@ -2,6 +2,7 @@ import { useEffect, useMemo, useState } from 'react'
 import { AdminLayout } from './AdminLayout'
 import type { PostulanteRechazadoEntrada } from '../../types/postulante'
 import { obtenerPostulantesRechazadosEntrada } from '../../services/rechazosEntradaService'
+import { formatDateTimeDmyHm } from '../../utils/inputFormatters'
 
 function Cell({
   value,
@@ -104,7 +105,7 @@ export function PostulantesRechazadosEntrada() {
                     <Cell value={r.email} />
                     <Cell value={r.telefono} />
                     <Cell value={r.domicilioFamiliar} />
-                    <Cell value={r.fechaPostulacion} />
+                    <Cell value={formatDateTimeDmyHm(r.fechaPostulacion)} />
                     <Cell value={r.comuna} />
                     <Cell value={r.nombreInstitucion} />
                     <Cell value={r.carrera} />
@@ -122,7 +123,7 @@ export function PostulantesRechazadosEntrada() {
                       }
                     />
                     <Cell value={r.rejectionMessage} rejected />
-                    <Cell value={r.updatedAt} />
+                    <Cell value={formatDateTimeDmyHm(r.updatedAt)} />
                   </tr>
                 ))}
               </tbody>

@@ -1,30 +1,47 @@
 /**
- * Encola correos para la extensión oficial "Trigger Email" (firestore-send-email).
- * Solo Admin SDK escribe en la colección configurada; el envío real depende de SMTP en la extensión.
- *
- * @see https://firebase.google.com/docs/extensions/official/firestore-send-email
+ * Encola correos en Firestore para ser procesados por la Cloud Function propia `processMailQueue`.
+ * Solo Admin SDK escribe en la colección configurada.
  */
 import * as admin from 'firebase-admin'
 
 import type { PostulanteRechazadoEntrada } from '../../src/types/postulante'
 
-export interface TriggerEmailRechazoEntradaConfig {
+const DEFAULT_MAIL_LOGO_URL = 'https://web.molina.cl/wp-content/uploads/2024/12/LogoMunicipalNew-1.png'
+
+export interface RechazoEntradaMailQueueConfig {
   enabled: boolean
   collection: string
   /** Nombre mostrado si se define remitente explícito (opcional). */
   fromDisplayName: string
-  /** Si está vacío, la extensión usa el "Default FROM" de su configuración. */
+  /** Si está vacío, `processMailQueue` usa SMTP_FROM_EMAIL/SMTP_USER como fallback. */
   fromEmail: string
+  /** URL pública del logo institucional para renderizar en HTML. */
+  logoUrl: string
 }
 
-export function getTriggerEmailRechazoEntradaConfig(): TriggerEmailRechazoEntradaConfig {
-  const enabled = process.env.ENABLE_TRIGGER_EMAIL_RECHAZO_ENTRADA === 'true'
-  const collection = (process.env.TRIGGER_EMAIL_COLLECTION || 'mail').trim() || 'mail'
+export function getRechazoEntradaMailQueueConfig(): RechazoEntradaMailQueueConfig {
+  const enabled =
+    process.env.ENABLE_RECHAZO_ENTRADA_EMAIL_QUEUE === 'true' ||
+    process.env.ENABLE_TRIGGER_EMAIL_RECHAZO_ENTRADA === 'true'
+  const collection = (
+    process.env.MAIL_QUEUE_COLLECTION ||
+    process.env.TRIGGER_EMAIL_COLLECTION ||
+    'mail'
+  ).trim() || 'mail'
   const fromDisplayName = (
-    process.env.TRIGGER_EMAIL_FROM_NAME || 'Beca Municipal de Molina 2026'
+    process.env.MAIL_FROM_NAME ||
+    process.env.TRIGGER_EMAIL_FROM_NAME ||
+    'Dirección de Desarrollo Comunitario (DIDECO) — Municipalidad de Molina'
   ).trim()
-  const fromEmail = (process.env.TRIGGER_EMAIL_FROM_EMAIL || '').trim()
-  return { enabled, collection, fromDisplayName, fromEmail }
+  const fromEmail = (process.env.MAIL_FROM_EMAIL || process.env.TRIGGER_EMAIL_FROM_EMAIL || '').trim()
+  const publicAppUrl = process.env.PUBLIC_APP_URL || ''
+  const logoUrl =
+    (process.env.MAIL_LOGO_URL || '').trim() ||
+    DEFAULT_MAIL_LOGO_URL ||
+    // Fallback: apunta al archivo del proyecto frontend si está publicado en el mismo dominio.
+    // Recomendado: definir MAIL_LOGO_URL con una URL pública estable (Firebase Hosting/Storage/CDN).
+    (publicAppUrl ? `${publicAppUrl.replace(/\/$/, '')}/src/assets/logo-molina.png` : '')
+  return { enabled, collection, fromDisplayName, fromEmail, logoUrl }
 }
 
 function escapeHtml(s: string): string {
@@ -44,7 +61,7 @@ function nombreCompleto(data: PostulanteRechazadoEntrada): string {
 }
 
 function buildSubject(): string {
-  return 'Notificación de rechazo — Beca Municipal de Molina 2026'
+  return 'Resultado de su postulación - Beca Municipal de Molina 2026'
 }
 
 /** Detalle adicional si aporta algo distinto al motivo principal. */
@@ -61,53 +78,64 @@ function buildPlainText(registro: PostulanteRechazadoEntrada): string {
   const lines = [
     `Estimado/a ${nombre},`,
     '',
-    'La Ilustre Municipalidad de Molina se comunica con usted en el marco del proceso de postulación a la Beca Municipal 2026.',
+    'Junto con saludar, la Dirección de Desarrollo Comunitario (DIDECO) de la Ilustre Municipalidad de Molina informa el resultado de la revisión de su postulación a la Beca Municipal 2026.',
     '',
-    'En base a su postulación y a lo establecido en las bases del proceso, le informamos que esta ha sido rechazada por el siguiente motivo:',
+    'De acuerdo con los antecedentes ingresados y conforme a las bases vigentes del proceso, su postulación no ha sido admitida en esta etapa por el siguiente motivo:',
     '',
-    registro.rejectionLabel,
+    `- ${registro.rejectionLabel}`,
     '',
   ]
   if (detalle) {
-    lines.push(detalle, '')
+    lines.push(`Detalle: ${detalle}`, '')
   }
   lines.push(
-    'Saludos cordiales.',
+    'Si requiere orientación sobre el proceso o actualización de antecedentes para futuras convocatorias, puede acercarse a la Dirección de Desarrollo Comunitario (DIDECO) de Molina.',
     '',
-    'Este mensaje fue generado automáticamente. Por favor no responda a este correo.',
+    'Atentamente,',
+    'Dirección de Desarrollo Comunitario (DIDECO)',
+    'Ilustre Municipalidad de Molina',
+    '',
+    'Este mensaje es informativo y fue emitido de forma automática. Por favor, no responder directamente a este correo.',
   )
   return lines.join('\n')
 }
 
-function buildHtml(registro: PostulanteRechazadoEntrada): string {
+function buildHtml(registro: PostulanteRechazadoEntrada, logoUrl: string): string {
   const nombre = escapeHtml(nombreCompleto(registro) || 'postulante')
   const motivo = escapeHtml(registro.rejectionLabel)
   const detalle = detalleRechazo(registro)
   const detalleHtml = detalle
-    ? `<p>${escapeHtml(detalle).replace(/\n/g, '<br/>')}</p>`
+    ? `<p style="margin:0 0 12px 0;"><strong>Detalle:</strong> ${escapeHtml(detalle).replace(/\n/g, '<br/>')}</p>`
+    : ''
+  const logoHtml = logoUrl
+    ? `<div style="margin:16px 0 0 0;padding-top:14px;border-top:1px solid #e5e7eb;"><img src="${escapeHtml(logoUrl)}" alt="Municipalidad de Molina" style="max-width:140px;width:100%;height:auto;display:block;" /></div>`
     : ''
   return [
-    '<!DOCTYPE html><html><head><meta charset="utf-8"/></head><body style="font-family:system-ui,sans-serif;line-height:1.55;color:#1e293b;max-width:36rem;">',
-    `<p>Estimado/a ${nombre},</p>`,
-    '<p>La <strong>Ilustre Municipalidad de Molina</strong> se comunica con usted en el marco del proceso de postulación a la <strong>Beca Municipal 2026</strong>.</p>',
-    '<p>En base a su postulación y a lo establecido en las bases del proceso, le informamos que esta ha sido <strong>rechazada</strong> por el siguiente motivo:</p>',
-    `<p style="margin:1rem 0;padding:0.75rem 1rem;background:#f1f5f9;border-left:4px solid #64748b;"><strong>${motivo}</strong></p>`,
+    '<!DOCTYPE html><html><head><meta charset="utf-8"/></head><body style="margin:0;padding:28px 36px;background:#ffffff;font-family:Arial,Helvetica,sans-serif;color:#0f172a;line-height:1.55;">',
+    '<h1 style="margin:0 0 18px 0;font-size:24px;line-height:1.25;color:#1e3a8a;">Resultado de postulación - Beca Municipal de Molina 2026</h1>',
+    '<div style="height:3px;background:#dbeafe;margin:0 0 22px 0;"></div>',
+    `<p style="margin:0 0 12px 0;">Estimado/a <strong>${nombre}</strong>:</p>`,
+    '<p style="margin:0 0 12px 0;">Junto con saludar, la <strong>Dirección de Desarrollo Comunitario (DIDECO)</strong> de la Ilustre Municipalidad de Molina informa el resultado de la revisión de su postulación a la Beca Municipal 2026.</p>',
+    '<p style="margin:0 0 16px 0;">Conforme a los antecedentes ingresados y a las bases vigentes del proceso, su postulación no ha sido admitida en esta etapa por el siguiente motivo:</p>',
+    `<div style="margin:0 0 16px 0;padding:14px 16px;background:#f8fafc;border:1px solid #dbeafe;border-left:5px solid #1d4ed8;font-size:15px;"><strong>${motivo}</strong></div>`,
     detalleHtml,
-    '<p>Saludos cordiales.</p>',
-    '<p style="font-size:0.8125rem;color:#64748b;margin-top:1.5rem;">Este mensaje fue generado automáticamente. Por favor no responda a este correo.</p>',
+    '<p style="margin:0 0 12px 0;">Si requiere orientación sobre el proceso o actualización de antecedentes para futuras convocatorias, puede acercarse a la DIDECO de Molina.</p>',
+    '<p style="margin:20px 0 0 0;">Atentamente,<br/><strong>Dirección de Desarrollo Comunitario (DIDECO)</strong><br/>Ilustre Municipalidad de Molina</p>',
+    '<p style="margin:22px 0 0 0;font-size:12px;color:#64748b;">Este mensaje es informativo y fue emitido de forma automática. Por favor, no responder directamente a este correo.</p>',
+    logoHtml,
     '</body></html>',
   ].join('')
 }
 
 /**
- * Crea un documento en la colección de la extensión Trigger Email (si está habilitado por env).
+ * Crea un documento en la colección de cola de correo (si está habilitado por env).
  * No lanza: los fallos se registran en consola para no afectar el registro del rechazo.
  */
-export async function enqueueRechazoEntradaEmail(
+export async function enqueueRechazoEntradaMail(
   db: admin.firestore.Firestore,
   registro: PostulanteRechazadoEntrada,
 ): Promise<void> {
-  const cfg = getTriggerEmailRechazoEntradaConfig()
+  const cfg = getRechazoEntradaMailQueueConfig()
   if (!cfg.enabled) {
     return
   }
@@ -117,7 +145,7 @@ export async function enqueueRechazoEntradaEmail(
     .toLowerCase()
   if (!emailPlausible(to)) {
     console.error(
-      'enqueueRechazoEntradaEmail: email inválido o vacío, se omite cola (RUT normalizado:',
+      'enqueueRechazoEntradaMail: email inválido o vacío, se omite cola (RUT normalizado:',
       registro.rutNormalizado,
       ')',
     )
@@ -126,7 +154,7 @@ export async function enqueueRechazoEntradaEmail(
 
   const subject = buildSubject()
   const text = buildPlainText(registro)
-  const html = buildHtml(registro)
+  const html = buildHtml(registro, cfg.logoUrl)
 
   const payload: Record<string, unknown> = {
     to: [to],
@@ -159,6 +187,6 @@ export async function enqueueRechazoEntradaEmail(
         { merge: true },
       )
   } catch (e) {
-    console.error('enqueueRechazoEntradaEmail:', e)
+    console.error('enqueueRechazoEntradaMail:', e)
   }
 }

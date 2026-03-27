@@ -4,7 +4,7 @@ import { createRecaptchaAppCheckProvider } from './appCheckProvider'
 import { getAuth } from 'firebase/auth'
 import { getFirestore, initializeFirestore, memoryLocalCache, setLogLevel } from 'firebase/firestore'
 import { getStorage } from 'firebase/storage'
-import { getFunctions } from 'firebase/functions'
+import { connectFunctionsEmulator, getFunctions } from 'firebase/functions'
 
 // Solo mostrar errores reales de Firestore, no warnings de transporte
 setLogLevel('error')
@@ -74,8 +74,7 @@ function initAppCheckIfNeeded(firebaseApp: ReturnType<typeof getApp>): void {
   } catch (e) {
     const msg = e instanceof Error ? e.message : String(e)
     if (/already been initialized|already initialized/i.test(msg)) {
-      // HMR u otra doble carga: App Check ya está activo; las callables siguen adjuntando token.
-      appCheckInstance = null
+      // HMR / Strict Mode: no tocar appCheckInstance; si ya se inicializó bien, el token sigue válido.
     } else {
       console.error('[App Check] No se pudo inicializar:', e)
     }
@@ -87,12 +86,24 @@ initAppCheckIfNeeded(app)
 /** Evita ráfagas concurrentes a content-firebaseappcheck (empeora appCheck/initial-throttle). */
 let prepareAppCheckInFlight: Promise<void> | null = null
 
+function usingFunctionsEmulatorInDev(): boolean {
+  return (
+    typeof window !== 'undefined' &&
+    import.meta.env.DEV &&
+    viteEnvString('VITE_USE_FUNCTIONS_EMULATOR') === 'true'
+  )
+}
+
 /**
  * Asegura un token de App Check antes de httpsCallable con enforceAppCheck.
  * Usa caché del SDK (`forceRefresh: false`) para no multiplicar peticiones 400/throttle en cada clic.
+ *
+ * Con `VITE_USE_FUNCTIONS_EMULATOR=true` (y emulador de Functions en marcha) no hace falta token.
  */
 export async function prepareCallableSecurity(): Promise<void> {
   if (typeof window === 'undefined') return
+
+  if (usingFunctionsEmulatorInDev()) return
 
   const siteKey = String(import.meta.env.VITE_RECAPTCHA_SITE_KEY || '').trim()
   if (!siteKey) {
@@ -148,6 +159,26 @@ try {
 export { db }
 export const auth = getAuth(app)
 export const storage = getStorage(app)
-export const functions = getFunctions(app, 'southamerica-west1')
+
+const functionsRegion = viteEnvString('VITE_FUNCTIONS_REGION') || 'southamerica-west1'
+export const functions = getFunctions(app, functionsRegion)
+
+let functionsEmulatorConnected = false
+if (typeof window !== 'undefined' && usingFunctionsEmulatorInDev() && !functionsEmulatorConnected) {
+  const host = viteEnvString('VITE_FUNCTIONS_EMULATOR_HOST') || '127.0.0.1'
+  const port = Number(viteEnvString('VITE_FUNCTIONS_EMULATOR_PORT') || '5001')
+  try {
+    connectFunctionsEmulator(functions, host, port)
+    functionsEmulatorConnected = true
+  } catch (e) {
+    const msg = e instanceof Error ? e.message : String(e)
+    if (/already been connected/i.test(msg)) {
+      functionsEmulatorConnected = true
+    } else {
+      console.error('[Firebase] connectFunctionsEmulator:', e)
+    }
+  }
+}
+
 export default app
 

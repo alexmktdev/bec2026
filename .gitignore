@@ -54,6 +54,7 @@ GoogleService-Info.plist
 # Cloud Functions: .env locales o archivos de runtime con API keys / secrets
 functions/.env
 functions/.env.*
+!functions/.env.example
 functions/.runtimeconfig.json
 
 # Firebase Admin / Google Cloud — claves privadas (nunca en Git)

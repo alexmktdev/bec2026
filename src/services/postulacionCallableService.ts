@@ -2,21 +2,16 @@
  * Creación y comprobaciones de postulación vía Cloud Functions (backend de confianza).
  * Firestore no permite `create` público en `postulantes`; estas funciones usan Admin SDK.
  */
-import { getFunctions, httpsCallable, type HttpsCallableResult } from 'firebase/functions'
-import app from '../firebase/config'
+import { httpsCallable, type HttpsCallableResult } from 'firebase/functions'
+import { functions, prepareCallableSecurity } from '../firebase/config'
 import type { DocumentosSubidos, PostulanteData } from '../types/postulante'
-
-const region = (import.meta.env.VITE_FUNCTIONS_REGION as string | undefined) || 'southamerica-west1'
-
-function functionsInstance() {
-  return getFunctions(app, region)
-}
 
 export type ElegibilidadResponse = { ok: true } | { ok: false; code: 'historical' | 'duplicate' }
 
 export async function verificarElegibilidadPostulacion(rut: string): Promise<ElegibilidadResponse> {
+  await prepareCallableSecurity()
   const fn = httpsCallable<{ rut: string }, ElegibilidadResponse>(
-    functionsInstance(),
+    functions,
     'verificarElegibilidadPostulacion',
   )
   const res: HttpsCallableResult<ElegibilidadResponse> = await fn({ rut })
@@ -30,10 +25,11 @@ export async function crearPostulacionCallable(
   documentosSubidos: DocumentosSubidos,
   documentPaths: Record<string, string>,
 ): Promise<CrearPostulacionResponse> {
+  await prepareCallableSecurity()
   const fn = httpsCallable<
     { data: PostulanteData; documentosSubidos: DocumentosSubidos; documentPaths: Record<string, string> },
     CrearPostulacionResponse
-  >(functionsInstance(), 'crearPostulacion')
+  >(functions, 'crearPostulacion')
   const res = await fn({ data, documentosSubidos, documentPaths })
   return res.data
 }
@@ -43,10 +39,11 @@ export async function registrarPostulanteRechazadoEntradaCallable(
   reason?: string,
   message?: string,
 ): Promise<void> {
+  await prepareCallableSecurity()
   const fn = httpsCallable<
     { data: PostulanteData; reason?: string; message?: string },
     { ok: boolean }
-  >(functionsInstance(), 'registrarPostulanteRechazadoEntrada')
+  >(functions, 'registrarPostulanteRechazadoEntrada')
   await fn({ data, reason, message })
 }
 

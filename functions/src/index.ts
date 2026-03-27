@@ -27,7 +27,7 @@ import {
 import { normalizeRut, rutTieneFormatoMinimo, validarRutMatematico } from '../../src/postulacion/shared/rut'
 import { CrearPostulacionPayloadSchema } from '../../src/postulacion/shared/payloadValidation'
 import { webCallableBase } from './httpsCallableDefaults'
-import { enqueueRechazoEntradaEmail } from './triggerEmailRechazoEntrada'
+import { enqueueRechazoEntradaMail } from './triggerEmailRechazoEntrada'
 
 if (!admin.apps.length) {
   admin.initializeApp()
@@ -40,7 +40,7 @@ function etiquetaRechazoEntrada(code: RechazoEntradaCode): string {
     case 'nem':
       return 'NEM insuficiente'
     case 'historical':
-      return 'Beneficiario en base histórica'
+      return 'Beneficiario de procesos anteriores'
     case 'duplicate':
       return 'Postulación duplicada'
     case 'rut_invalido':
@@ -49,6 +49,20 @@ function etiquetaRechazoEntrada(code: RechazoEntradaCode): string {
       return 'Declaración jurada no aceptada'
     default:
       return 'Rechazo de entrada'
+  }
+}
+
+function toRechazoEntradaCode(code: string): RechazoEntradaCode {
+  switch (code) {
+    case 'edad':
+    case 'nem':
+    case 'historical':
+    case 'duplicate':
+    case 'rut_invalido':
+    case 'declaracion':
+      return code
+    default:
+      return 'desconocido'
   }
 }
 
@@ -78,7 +92,7 @@ async function registrarRechazoEntradaEnFirestore(
     updatedAt: now,
   }
   await db.collection('postulantes_rechazados_entrada').doc(rutNormalizado).set(registro, { merge: true })
-  await enqueueRechazoEntradaEmail(db, registro)
+  await enqueueRechazoEntradaMail(db, registro)
 }
 
 /**
@@ -185,7 +199,7 @@ export const registrarPostulanteRechazadoEntrada = onCall(
     let message = String(payload?.message || 'Postulación rechazada en validación de entrada.')
 
     if (!reglas.ok) {
-      reason = reglas.code
+      reason = toRechazoEntradaCode(reglas.code)
       message = reglas.message
     } else {
       const norm = normalizeRut(String(data.rut || '').trim())
@@ -469,3 +483,4 @@ export const cambiarEstadoUsuario = onCall(
 )
 
 export * from './admin'
+export * from './mailProcessor'
