@@ -1,7 +1,70 @@
 import type { PostulanteFirestore } from '../../../types/postulante'
 import { formatDate, formatDateTime } from '../../../utils/inputFormatters'
 import { resumenCuentaBancariaListado } from '../../../utils/cuentaBancariaDisplay'
+import {
+  conteoValidacionDocumentos,
+  getRevisionDocumentosEstado,
+  type RevisionDocumentosEstado,
+} from '../../../utils/revisionDocumentosEstado'
 import { useAuth } from '../../../hooks/useAuth'
+
+function badgeRevisionDocs(
+  p: PostulanteFirestore,
+  modo: 'revision' | 'final_ok' | 'final_rechazo',
+): { label: string; sub?: string; className: string; pulse?: boolean } {
+  if (modo === 'final_rechazo') {
+    return {
+      label: 'Rechazado',
+      className: 'border-red-300 bg-red-100 text-red-900',
+    }
+  }
+  if (modo === 'final_ok') {
+    return {
+      label: 'Validado',
+      sub: 'Listo para desempate',
+      className: 'border-emerald-400 bg-emerald-100 text-emerald-900',
+    }
+  }
+  const estado = getRevisionDocumentosEstado(p)
+  const { total, validados } = conteoValidacionDocumentos(p)
+  switch (estado) {
+    case 'rechazado':
+      return { label: 'Rechazado', className: 'border-red-300 bg-red-100 text-red-900' }
+    case 'completo':
+      return {
+        label: 'Validado',
+        sub: 'Documentación completa',
+        className: 'border-emerald-400 bg-emerald-100 text-emerald-900',
+      }
+    case 'en_proceso':
+      return {
+        label: 'Validación incompleta',
+        sub: total > 0 ? `En proceso · ${validados}/${total} documentos` : 'En proceso',
+        className: 'border-amber-500 bg-amber-100 text-amber-950 ring-2 ring-amber-400/80',
+        pulse: true,
+      }
+    case 'sin_docs':
+      return {
+        label: 'Sin documentos',
+        sub: 'No hay archivos que revisar',
+        className: 'border-orange-400 bg-orange-100 text-orange-950',
+      }
+    default:
+      return {
+        label: 'Pendiente de revisar',
+        sub: 'Aún sin documentos validados',
+        className: 'border-slate-300 bg-slate-100 text-slate-700',
+      }
+  }
+}
+
+function filaClassRevision(estado: RevisionDocumentosEstado, modoRevision: boolean): string {
+  if (!modoRevision) return ''
+  if (estado === 'en_proceso') return 'shadow-[inset_4px_0_0_0_#d97706]'
+  if (estado === 'sin_docs') return 'shadow-[inset_4px_0_0_0_#ea580c]'
+  if (estado === 'completo') return 'shadow-[inset_4px_0_0_0_#059669]'
+  return ''
+}
 
 interface RevisionTableProps {
   postulantes: PostulanteFirestore[]
@@ -37,7 +100,14 @@ export function RevisionTable({
         <table className="min-w-max w-full divide-y divide-slate-200 text-[10px]">
           <thead className={theadBg}>
             <tr>
-              <th className="px-2 py-2 text-center font-black uppercase text-slate-800 whitespace-nowrap sticky left-0 z-10 bg-inherit shadow-[1px_0_0_0_rgba(203,213,225,1)]">#</th>
+              <th className="px-2 py-2 text-center font-black uppercase text-slate-800 whitespace-nowrap sticky left-0 z-10 bg-inherit shadow-[1px_0_0_0_rgba(203,213,225,1)] min-w-[7.5rem]">
+                <span className="block">#</span>
+                {!isFinalView && !isRechazadosView && (
+                  <span className="mt-1 block text-[8px] font-bold uppercase tracking-wide text-amber-800 normal-case">
+                    Validación
+                  </span>
+                )}
+              </th>
               <th className="px-2 py-2 text-left font-semibold uppercase text-slate-500 whitespace-nowrap">Nombres</th>
               <th className="px-2 py-2 text-left font-semibold uppercase text-slate-500 whitespace-nowrap">Apellido Paterno</th>
               <th className="px-2 py-2 text-left font-semibold uppercase text-slate-500 whitespace-nowrap">Apellido Materno</th>
@@ -86,11 +156,43 @@ export function RevisionTable({
             ) : (
               postulantes.map((p, idx) => {
                 const isAssigned = userRole?.role === 'superadmin' || p.assignedTo === user?.uid
+                const modoBadge: 'revision' | 'final_ok' | 'final_rechazo' = isRechazadosView
+                  ? 'final_rechazo'
+                  : isFinalView
+                    ? 'final_ok'
+                    : 'revision'
+                const docBadge = badgeRevisionDocs(p, modoBadge)
+                const estadoDoc = getRevisionDocumentosEstado(p)
+                const modoRevision = !isFinalView && !isRechazadosView
+                const filaExtra = filaClassRevision(estadoDoc, modoRevision)
+                const stickyBg =
+                  modoRevision && estadoDoc === 'en_proceso'
+                    ? 'bg-amber-50'
+                    : modoRevision && estadoDoc === 'sin_docs'
+                      ? 'bg-orange-50'
+                      : modoRevision && estadoDoc === 'completo'
+                        ? 'bg-emerald-50/80'
+                        : 'bg-white'
 
                 return (
-                <tr key={p.id} className={`hover:bg-slate-50/80 transition-colors ${!isAssigned ? 'opacity-70' : ''}`}>
-                  <td className="px-3 py-1.5 text-center font-bold text-slate-500 whitespace-nowrap sticky left-0 z-10 bg-white shadow-[1px_0_0_0_rgba(241,245,249,1)]">
-                    {p.ordenRevisionDoc ?? startIndex + idx}
+                <tr
+                  key={p.id}
+                  className={`transition-colors ${filaExtra} ${!isAssigned ? 'opacity-70' : ''} ${modoRevision ? 'hover:brightness-[0.985]' : 'hover:bg-slate-50/80'}`}
+                >
+                  <td
+                    className={`px-2 py-2 text-center sticky left-0 z-10 shadow-[1px_0_0_0_rgba(241,245,249,1)] ${stickyBg}`}
+                  >
+                    <span className="block text-sm font-bold text-slate-600 tabular-nums">
+                      {p.ordenRevisionDoc ?? startIndex + idx}
+                    </span>
+                    <div
+                      className={`mt-1.5 inline-flex max-w-[9rem] flex-col items-center gap-0.5 rounded-md border px-1.5 py-1 text-center text-[8px] font-extrabold uppercase leading-tight tracking-tight ${docBadge.className} ${docBadge.pulse ? 'animate-pulse' : ''}`}
+                    >
+                      <span>{docBadge.label}</span>
+                      {docBadge.sub && (
+                        <span className="text-[7px] font-semibold normal-case leading-snug opacity-95">{docBadge.sub}</span>
+                      )}
+                    </div>
                   </td>
                   <td className="px-2 py-1.5 text-slate-700 whitespace-nowrap font-medium">{p.nombres}</td>
                   <td className="px-2 py-1.5 text-slate-700 whitespace-nowrap">{p.apellidoPaterno}</td>

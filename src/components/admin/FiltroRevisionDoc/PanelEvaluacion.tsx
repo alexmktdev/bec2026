@@ -30,6 +30,8 @@ export function PanelEvaluacion({ postulante, onClose, onValidado, onActualizarP
   const todosValidados =
     docEntries.length > 0 &&
     docEntries.every(([key]) => validaciones[key] === true)
+  const algunDocValidadoLocal = docEntries.some(([key]) => validaciones[key] === true)
+  const validadosCount = docEntries.filter(([key]) => validaciones[key] === true).length
 
   const handleGuardadoEdicion = async (actualizado: PostulanteFirestore) => {
     setPostulanteLocal(actualizado)
@@ -221,7 +223,26 @@ export function PanelEvaluacion({ postulante, onClose, onValidado, onActualizarP
             {todosValidados && (
               <div className="rounded-lg border border-green-200 bg-green-50 p-3">
                 <p className="text-sm font-semibold text-green-800">
-                  Todos los documentos validados. El postulante quedará con estado "Documentación validada".
+                  Todos los documentos validados. El postulante quedará con estado &quot;Documentación validada&quot; y podrá pasar al filtro final / desempate cuando active el filtro en esta sección.
+                </p>
+              </div>
+            )}
+
+            {!todosValidados && algunDocValidadoLocal && docEntries.length > 0 && (
+              <div
+                className="rounded-xl border-2 border-amber-500 bg-amber-50 p-4 shadow-md ring-2 ring-amber-400/70"
+                role="alert"
+              >
+                <p className="text-sm font-black uppercase tracking-wide text-amber-950">
+                  Validación incompleta · en proceso
+                </p>
+                <p className="mt-1 text-sm font-semibold text-amber-900">
+                  Llevas {validadosCount} de {docEntries.length} documentos marcados como válidos. Debes validar todos los
+                  documentos para cerrar la revisión de esta persona.
+                </p>
+                <p className="mt-2 text-xs text-amber-800">
+                  Si guardas ahora, el postulante quedará en revisión y en la tabla verás el aviso &quot;Validación
+                  incompleta&quot; hasta completar todos los documentos.
                 </p>
               </div>
             )}

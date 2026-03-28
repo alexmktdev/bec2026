@@ -196,6 +196,12 @@ export function FiltroRevisionDoc() {
         <div className="rounded-xl border border-blue-200 bg-blue-50/50 p-4">
           <p className="text-sm text-blue-800 leading-relaxed">
             Sección de revisión exhaustiva basada en el filtro de {puntajeAplicado != null ? `puntaje ≥ ${puntajeAplicado}` : 'sin filtro'}.
+            {' '}
+            En la primera columna de la tabla verás el estado de cada postulante:{' '}
+            <strong className="text-amber-900">validación incompleta / en proceso</strong> si faltan documentos por validar,{' '}
+            <strong className="text-emerald-900">validado</strong> cuando la documentación esté completa (luego podrás activar el filtro final para desempate).
+            {' '}
+            Aplica tanto si hay tramos asignados como si el superadmin revisa directamente.
           </p>
         </div>
 
