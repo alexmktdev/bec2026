@@ -84,7 +84,7 @@ export function PostulantesRechazadosEntrada() {
                   <th className="px-2 py-2 text-left font-bold text-slate-600">Comuna</th>
                   <th className="px-2 py-2 text-left font-bold text-slate-600">Institución</th>
                   <th className="px-2 py-2 text-left font-bold text-slate-600">Carrera</th>
-                  <th className="px-2 py-2 text-left font-bold text-slate-600">Matrícula (año)</th>
+                  <th className="px-2 py-2 text-left font-bold text-slate-600">Matrícula en curso (año)</th>
                   <th className="px-2 py-2 text-left font-bold text-slate-600">Duración</th>
                   <th className="px-2 py-2 text-left font-bold text-slate-600">Integrantes</th>
                   <th className="px-2 py-2 text-left font-bold text-slate-600">Tramo RSH</th>

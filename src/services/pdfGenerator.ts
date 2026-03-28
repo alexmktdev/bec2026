@@ -34,7 +34,7 @@ export function generarReportePDF(postulantes: PostulanteFirestore[]) {
       'Comuna',
       'Carrera',
       'Duración Semestres',
-      'Matrícula (año)',
+      'Matrícula en curso (año)',
       'Total Integrantes',
       'Tramo RSH',
       'Hermanos/Hijos Estudiando',
@@ -173,7 +173,7 @@ export function generarReporteIndividualPDF(p: PostulanteFirestore): Blob {
 
   y = compactTable('2. Antecedentes Académicos y Familiares', [
     ['Institución', p.nombreInstitucion, 'NEM', p.nem],
-    ['Carrera', p.carrera, 'Matrícula (año)', p.anoIngreso],
+    ['Carrera', p.carrera, 'Matrícula en curso (año)', p.anoIngreso],
     ['Comuna', p.comuna, 'Duración', `${p.duracionSemestres} sem.`],
     ['Total Integrantes', p.totalIntegrantes, 'Tramo RSH', p.tramoRegistroSocial],
     ['Hnos. Estudiando', p.tieneHermanosOHijosEstudiando, 'Enf. Catastrófica', p.enfermedadCatastrofica],

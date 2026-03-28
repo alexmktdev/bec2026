@@ -23,7 +23,7 @@ const COLUMNS: { header: string; key: string; width: number }[] = [
   { header: 'Comuna', key: 'comuna', width: 15 },
   { header: 'Carrera', key: 'carrera', width: 25 },
   { header: 'Duración Semestres', key: 'duracionSemestres', width: 16 },
-  { header: 'Matrícula (año)', key: 'anoIngreso', width: 12 },
+  { header: 'Matrícula en curso (año)', key: 'anoIngreso', width: 22 },
   { header: 'Total Integrantes', key: 'totalIntegrantes', width: 16 },
   { header: 'Tramo RSH', key: 'tramoRegistroSocial', width: 12 },
   { header: 'Hermanos/Hijos Estudiando', key: 'hermanosHijos', width: 22 },

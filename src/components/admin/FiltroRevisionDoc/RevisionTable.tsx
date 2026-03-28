@@ -55,7 +55,7 @@ export function RevisionTable({
               <th className="px-2 py-2 text-left font-semibold uppercase text-slate-500 whitespace-nowrap">Comuna</th>
               <th className="px-2 py-2 text-left font-semibold uppercase text-slate-500 whitespace-nowrap">Carrera</th>
               <th className="px-2 py-2 text-left font-semibold uppercase text-slate-500 whitespace-nowrap text-center">Duración</th>
-              <th className="px-2 py-2 text-left font-semibold uppercase text-slate-500 whitespace-nowrap text-center">Matrícula (año)</th>
+              <th className="px-2 py-2 text-left font-semibold uppercase text-slate-500 whitespace-nowrap text-center">Matrícula en curso (año)</th>
               <th className="px-2 py-2 text-left font-semibold uppercase text-slate-500 whitespace-nowrap text-center">Integrantes</th>
               <th className="px-2 py-2 text-left font-semibold uppercase text-teal-600 whitespace-nowrap bg-teal-50/30">Tramo RSH</th>
               <th className="px-2 py-2 text-left font-semibold uppercase text-purple-600 whitespace-nowrap bg-purple-50/30">Hnos. Estudiando</th>

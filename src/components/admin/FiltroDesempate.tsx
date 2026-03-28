@@ -419,7 +419,7 @@ export function FiltroDesempate() {
                         <th className={TH}>Comuna</th>
                         <th className={TH}>Carrera</th>
                         <th className={TH}>Semestres</th>
-                        <th className={TH}>Matrícula (año)</th>
+                        <th className={TH}>Matrícula en curso (año)</th>
                         <th className={TH}>Total Integr.</th>
                         <th className={`${TH} bg-teal-50 text-teal-700`}>Tramo RSH</th>
                         <th className={`${TH} bg-purple-50 text-purple-700`}>Hnos./Hijos Est.</th>
