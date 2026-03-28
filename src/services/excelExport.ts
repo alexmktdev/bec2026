@@ -23,7 +23,7 @@ const COLUMNS: { header: string; key: string; width: number }[] = [
   { header: 'Comuna', key: 'comuna', width: 15 },
   { header: 'Carrera', key: 'carrera', width: 25 },
   { header: 'Duración Semestres', key: 'duracionSemestres', width: 16 },
-  { header: 'Matrícula en curso (año)', key: 'anoIngreso', width: 22 },
+  { header: 'Año en curso', key: 'anoIngreso', width: 14 },
   { header: 'Total Integrantes', key: 'totalIntegrantes', width: 16 },
   { header: 'Tramo RSH', key: 'tramoRegistroSocial', width: 12 },
   { header: 'Hermanos/Hijos Estudiando', key: 'hermanosHijos', width: 22 },
@@ -33,7 +33,6 @@ const COLUMNS: { header: string; key: string; width: number }[] = [
   { header: 'Enfermedad Crónica', key: 'enfCronica', width: 18 },
   { header: 'Tipo cuenta banc.', key: 'tipoCuentaBancaria', width: 14 },
   { header: 'Cuenta bancaria (resumen)', key: 'cuentaResumen', width: 40 },
-  { header: 'Observaciones', key: 'observacion', width: 25 },
   { header: 'Puntaje NEM', key: 'pNem', width: 12 },
   { header: 'Puntaje RSH', key: 'pRsh', width: 12 },
   { header: 'Puntaje Enfermedad', key: 'pEnfermedad', width: 16 },
@@ -45,10 +44,14 @@ const COLUMNS: { header: string; key: string; width: number }[] = [
 
 function estadoLabel(estado: string): string {
   switch (estado) {
-    case 'pendiente': return 'PRE-APROBADO'
-    case 'en_revision': return 'EN REVISIÓN'
-    case 'documentacion_validada': return 'DOC. VALIDADA'
-    default: return estado.toUpperCase()
+    case 'pendiente':
+      return 'PRE-APROBADO'
+    case 'en_revision':
+      return 'EN REVISIÓN'
+    case 'documentacion_validada':
+      return 'DOC. VALIDADA'
+    default:
+      return estado.toUpperCase()
   }
 }
 
@@ -72,7 +75,7 @@ function toRow(p: PostulanteFirestore): Record<string, unknown> {
     comuna: p.comuna,
     carrera: p.carrera,
     duracionSemestres: p.duracionSemestres,
-    anoIngreso: p.anoIngreso,
+    anoIngreso: String(p.anoIngreso ?? '').trim(),
     totalIntegrantes: p.totalIntegrantes,
     tramoRegistroSocial: p.tramoRegistroSocial,
     hermanosHijos: p.tieneHermanosOHijosEstudiando,
@@ -82,7 +85,6 @@ function toRow(p: PostulanteFirestore): Record<string, unknown> {
     enfCronica: p.enfermedadCronica,
     tipoCuentaBancaria: p.tipoCuentaBancaria === 'otra' ? 'Otra' : 'Cuenta RUT',
     cuentaResumen: resumenCuentaBancariaListado(p),
-    observacion: p.observacion,
     pNem: p.puntaje.nem,
     pRsh: p.puntaje.rsh,
     pEnfermedad: p.puntaje.enfermedad,
@@ -93,20 +95,28 @@ function toRow(p: PostulanteFirestore): Record<string, unknown> {
   }
 }
 
+function rowValuesInOrder(p: PostulanteFirestore): unknown[] {
+  const o = toRow(p)
+  return COLUMNS.map((col) => {
+    const v = o[col.key]
+    if (v === undefined || v === null) return ''
+    return v
+  })
+}
+
 export async function exportarExcel(postulantes: PostulanteFirestore[]) {
   const workbook = new ExcelJS.Workbook()
   const sheet = workbook.addWorksheet('Postulantes')
 
-  sheet.columns = COLUMNS
+  const headerRow = sheet.addRow(COLUMNS.map((c) => c.header))
+  headerRow.font = { bold: true }
+  COLUMNS.forEach((col, i) => {
+    sheet.getColumn(i + 1).width = col.width
+  })
 
   for (const p of postulantes) {
-    sheet.addRow(toRow(p))
+    sheet.addRow(rowValuesInOrder(p))
   }
-
-  // Estilo del encabezado
-  sheet.getRow(1).eachCell((cell) => {
-    cell.font = { bold: true }
-  })
 
   const buffer = await workbook.xlsx.writeBuffer()
   const blob = new Blob([buffer], {
