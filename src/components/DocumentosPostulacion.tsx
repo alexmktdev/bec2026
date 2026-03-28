@@ -241,7 +241,7 @@ export function DocumentosPostulacion() {
     setMostrarErrores(true)
 
     if (!todosSubidos) return
-    markStepCompleted(6)
+    markStepCompleted(5)
     // Pequeño timeout para animación de éxito si hubiera
     setTimeout(() => {
       navigate('/declaracion_jurada_8')
@@ -257,7 +257,7 @@ export function DocumentosPostulacion() {
         <img src={logoMolina} alt="Logo" className="mx-auto h-24 w-auto object-contain mb-2" />
         
         <header className="space-y-1 text-center">
-          <p className="text-sm font-semibold text-blue-600 uppercase tracking-wider">Paso 6 de 7</p>
+          <p className="text-sm font-semibold text-blue-600 uppercase tracking-wider">Paso 5 de 6</p>
           <h1 className="text-2xl font-bold text-slate-800">Documentos obligatorios</h1>
         </header>
 
@@ -302,7 +302,7 @@ export function DocumentosPostulacion() {
         <div className="pt-6 mt-4 flex justify-between items-center border-t border-slate-100">
             <button
               type="button"
-              onClick={() => navigate('/observaciones_6')}
+              onClick={() => navigate('/cuenta_bancaria_5')}
               className="px-6 py-2.5 rounded-lg border border-slate-300 text-sm font-bold text-slate-700 hover:bg-slate-50 transition-colors"
             >
               Atrás

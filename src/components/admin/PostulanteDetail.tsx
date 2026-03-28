@@ -4,6 +4,7 @@ import { generarReporteIndividualPDF } from '../../services/pdfGenerator'
 import { formatDate } from '../../utils/inputFormatters'
 import { ref, getBlob } from 'firebase/storage'
 import { storage } from '../../firebase/config'
+import { etiquetaBancoOtra } from '../../postulacion/shared/cuentaBancariaSchema'
 
 interface Props {
   postulante: PostulanteFirestore
@@ -168,7 +169,7 @@ export function PostulanteDetail({ postulante: p, onClose }: Props) {
               <Field label="Comuna" value={p.comuna} />
               <Field label="Carrera" value={p.carrera} />
               <Field label="Duración (semestres)" value={p.duracionSemestres} />
-              <Field label="Año ingreso" value={p.anoIngreso} />
+              <Field label="Matrícula en curso (año)" value={p.anoIngreso} />
             </dl>
           </div>
 
@@ -190,8 +191,23 @@ export function PostulanteDetail({ postulante: p, onClose }: Props) {
           <div>
             <SectionTitle>Cuenta bancaria</SectionTitle>
             <dl className="grid grid-cols-2 gap-x-6 gap-y-3">
-              <Field label="Número cuenta" value={p.numeroCuenta} />
-              <Field label="RUT cuenta" value={p.rutCuenta} />
+              <Field
+                label="Modalidad"
+                value={p.tipoCuentaBancaria === 'otra' ? 'Otra cuenta bancaria' : 'Cuenta RUT'}
+              />
+              {p.tipoCuentaBancaria === 'otra' ? (
+                <>
+                  <Field label="Banco" value={etiquetaBancoOtra(p)} />
+                  <Field label="Tipo de cuenta" value={p.otraTipoCuenta} />
+                  <Field label="Número de cuenta" value={p.otraNumeroCuenta} />
+                  <Field label="RUT titular" value={p.otraRutTitular} />
+                </>
+              ) : (
+                <>
+                  <Field label="Número cuenta RUT" value={p.numeroCuenta} />
+                  <Field label="RUT titular" value={p.rutCuenta} />
+                </>
+              )}
             </dl>
           </div>
 

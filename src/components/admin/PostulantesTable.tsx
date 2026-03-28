@@ -5,6 +5,7 @@ import { formatDate } from '../../utils/inputFormatters'
 import { descargarDocumentosPostulante } from '../../services/zipDownload'
 import { generarReporteIndividualPDF } from '../../services/pdfGenerator'
 import { PostulanteEdit } from './PostulanteEdit'
+import { resumenCuentaBancariaListado } from '../../utils/cuentaBancariaDisplay'
 import { TableScrollSlider } from './TableScrollSlider'
 import { TablePagination } from './TablePagination'
 
@@ -53,7 +54,7 @@ export function PostulantesTable({ postulantes, onSelectPostulante, onEliminar, 
 
   const scrollRef = useRef<HTMLDivElement | null>(null)
 
-  const colCount = 40
+  const colCount = 39
 
   const filtrados = useMemo(() => {
     if (!busqueda) return postulantes
@@ -168,7 +169,7 @@ export function PostulantesTable({ postulantes, onSelectPostulante, onEliminar, 
                 <th className="px-2 py-2 text-left font-semibold uppercase text-slate-500 whitespace-nowrap">Comuna</th>
                 <th className="px-2 py-2 text-left font-semibold uppercase text-slate-500 whitespace-nowrap">Carrera</th>
                 <th className="px-2 py-2 text-left font-semibold uppercase text-slate-500 whitespace-nowrap">Duración Semestres</th>
-                <th className="px-2 py-2 text-left font-semibold uppercase text-slate-500 whitespace-nowrap">Año Ingreso</th>
+                <th className="px-2 py-2 text-left font-semibold uppercase text-slate-500 whitespace-nowrap">Matrícula (año)</th>
                 <th className="px-2 py-2 text-left font-semibold uppercase text-slate-500 whitespace-nowrap">Total Integrantes</th>
                 <th className="px-2 py-2 text-left font-semibold uppercase text-teal-600 whitespace-nowrap bg-teal-50/30">Tramo RSH</th>
                 <th className="px-2 py-2 text-left font-semibold uppercase text-purple-600 whitespace-nowrap bg-purple-50/30">Hermanos/Hijos Estudiando</th>
@@ -176,8 +177,7 @@ export function PostulantesTable({ postulantes, onSelectPostulante, onEliminar, 
                 <th className="px-2 py-2 text-left font-semibold uppercase text-purple-600 whitespace-nowrap bg-purple-50/30">2+ Hermanos/Hijos</th>
                 <th className="px-2 py-2 text-left font-semibold uppercase text-rose-600 whitespace-nowrap bg-rose-50/30">Enfermedad Catastrófica</th>
                 <th className="px-2 py-2 text-left font-semibold uppercase text-rose-600 whitespace-nowrap bg-rose-50/30">Enfermedad Crónica</th>
-                <th className="px-2 py-2 text-left font-semibold uppercase text-slate-500 whitespace-nowrap">N° Cuenta</th>
-                <th className="px-2 py-2 text-left font-semibold uppercase text-slate-500 whitespace-nowrap">RUT Cuenta</th>
+                <th className="px-2 py-2 text-left font-semibold uppercase text-slate-500 whitespace-nowrap min-w-[200px]">Cuenta bancaria</th>
                 <th className="px-2 py-2 text-left font-semibold uppercase text-slate-500 whitespace-nowrap">Observaciones</th>
                 <th className="px-2 py-2 text-left font-semibold uppercase text-indigo-700 whitespace-nowrap bg-indigo-50/50">Pt. NEM</th>
                 <th className="px-2 py-2 text-left font-semibold uppercase text-teal-700 whitespace-nowrap bg-teal-50/50">Pt. RSH</th>
@@ -241,8 +241,12 @@ export function PostulantesTable({ postulantes, onSelectPostulante, onEliminar, 
                     <td className="px-2 py-2 text-purple-700 whitespace-nowrap bg-purple-50/20 font-medium text-center">{p.tieneDosOMasHermanosOHijosEstudiando || '—'}</td>
                     <td className="px-2 py-2 text-rose-700 whitespace-nowrap bg-rose-50/20 font-medium text-center">{p.enfermedadCatastrofica || '—'}</td>
                     <td className="px-2 py-2 text-rose-700 whitespace-nowrap bg-rose-50/20 font-medium text-center">{p.enfermedadCronica || '—'}</td>
-                    <td className="px-2 py-2 text-slate-600 whitespace-nowrap">{p.numeroCuenta || '—'}</td>
-                    <td className="px-2 py-2 text-slate-600 whitespace-nowrap">{p.rutCuenta || '—'}</td>
+                    <td
+                      className="px-2 py-2 text-slate-600 max-w-[280px] text-xs leading-snug"
+                      title={resumenCuentaBancariaListado(p)}
+                    >
+                      {resumenCuentaBancariaListado(p)}
+                    </td>
                     <td className="px-2 py-2 text-slate-600 max-w-[260px] truncate" title={p.observacion || ''}>
                       {p.observacion || '—'}
                     </td>

@@ -64,7 +64,7 @@ export function AntecedentesAcademicos() {
         <img src={logoMolina} alt="Logo" className="mx-auto h-24 w-auto object-contain mb-2" />
         
         <header className="space-y-1 text-center">
-          <p className="text-sm font-semibold text-blue-600 uppercase tracking-wider">Paso 2 de 7</p>
+          <p className="text-sm font-semibold text-blue-600 uppercase tracking-wider">Paso 2 de 6</p>
           <h1 className="text-2xl font-bold text-slate-800">Antecedentes académicos</h1>
         </header>
 
@@ -135,14 +135,14 @@ export function AntecedentesAcademicos() {
             {errors.duracionSemestres && <p className="text-xs font-medium text-red-500">{errors.duracionSemestres.message}</p>}
           </div>
 
-          {/* Año Ingreso */}
+          {/* Matrícula en curso (año) */}
           <div className="space-y-1.5">
-            <label className="text-sm font-bold text-slate-700">Año de ingreso</label>
+            <label className="text-sm font-bold text-slate-700">Matrícula en curso (año)</label>
             <input
               {...register('anoIngreso', {
                 onChange: (e) => setValue('anoIngreso', soloNumeros(e.target.value, { maxLength: 4 }))
               })}
-              placeholder="Ej: 2024"
+              placeholder="Ej: 2026"
               className={`block w-full rounded-lg border px-3 py-2.5 text-sm transition-all focus:ring-2 focus:ring-blue-100 outline-none ${errors.anoIngreso ? 'border-red-400' : 'border-slate-300 focus:border-blue-500'}`}
             />
             {errors.anoIngreso && <p className="text-xs font-medium text-red-500">{errors.anoIngreso.message}</p>}

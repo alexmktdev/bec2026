@@ -111,7 +111,7 @@ export function AntecedentesPostulante() {
         <img src={logoMolina} alt="Logo" className="mx-auto h-24 w-auto object-contain mb-2" />
         
         <header className="space-y-1 text-center">
-          <p className="text-sm font-semibold text-blue-600 uppercase tracking-wider">Paso 1 de 7</p>
+          <p className="text-sm font-semibold text-blue-600 uppercase tracking-wider">Paso 1 de 6</p>
           <h1 className="text-2xl font-bold text-slate-800">Antecedentes del postulante</h1>
         </header>
 

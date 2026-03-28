@@ -11,6 +11,7 @@ import {
 } from '../../services/filtroConfigService'
 import type { PostulanteFirestore } from '../../types/postulante'
 import { formatDate } from '../../utils/inputFormatters'
+import { resumenCuentaBancariaListado } from '../../utils/cuentaBancariaDisplay'
 
 // ── Lógica de ordenamiento por desempate ─────────────────────────────────────
 
@@ -418,7 +419,7 @@ export function FiltroDesempate() {
                         <th className={TH}>Comuna</th>
                         <th className={TH}>Carrera</th>
                         <th className={TH}>Semestres</th>
-                        <th className={TH}>Año Ingreso</th>
+                        <th className={TH}>Matrícula (año)</th>
                         <th className={TH}>Total Integr.</th>
                         <th className={`${TH} bg-teal-50 text-teal-700`}>Tramo RSH</th>
                         <th className={`${TH} bg-purple-50 text-purple-700`}>Hnos./Hijos Est.</th>
@@ -426,8 +427,7 @@ export function FiltroDesempate() {
                         <th className={`${TH} bg-purple-50 text-purple-700`}>2+ Hnos./Hijos</th>
                         <th className={`${TH} bg-rose-50 text-rose-700`}>Enf. Catastrófica</th>
                         <th className={`${TH} bg-rose-50 text-rose-700`}>Enf. Crónica</th>
-                        <th className={TH}>N° Cuenta</th>
-                        <th className={TH}>RUT Cuenta</th>
+                        <th className={TH}>Cuenta bancaria</th>
                         <th className={TH}>Observaciones</th>
                         <th className={`${TH} text-indigo-700 bg-indigo-50/80`}>Pt. NEM</th>
                         <th className={`${TH} text-teal-700 bg-teal-50/80`}>Pt. RSH</th>
@@ -476,8 +476,9 @@ export function FiltroDesempate() {
                             <td className={`${TD} bg-purple-50/20 text-purple-700 font-medium text-center`}>{p.tieneDosOMasHermanosOHijosEstudiando}</td>
                             <td className={`${TD} bg-rose-50/20 text-rose-700 font-medium text-center`}>{p.enfermedadCatastrofica}</td>
                             <td className={`${TD} bg-rose-50/20 text-rose-700 font-medium text-center`}>{p.enfermedadCronica}</td>
-                            <td className={TD}>{p.numeroCuenta}</td>
-                            <td className={TD}>{p.rutCuenta}</td>
+                            <td className={`${TD} max-w-[220px] text-[10px] leading-tight`} title={resumenCuentaBancariaListado(p)}>
+                              {resumenCuentaBancariaListado(p)}
+                            </td>
                             <td className={`${TD} max-w-[200px] truncate`}>{p.observacion}</td>
                             <td className={`${TD} text-indigo-800 bg-indigo-50/40 font-bold`}>{p.puntaje.nem}</td>
                             <td className={`${TD} text-teal-800 bg-teal-50/40 font-bold`}>{p.puntaje.rsh}</td>

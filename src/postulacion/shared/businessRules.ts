@@ -6,6 +6,7 @@ export type ReglaNegocioCode =
   | 'rut_invalido'
   | 'edad'
   | 'nem'
+  | 'matricula_curso'
   | 'declaracion'
   | 'documentos'
   | 'urls_invalidas'
@@ -120,6 +121,16 @@ export function evaluarReglasPostulacion(data: PostulanteData): ReglaNegocioResu
       ok: false,
       code: 'nem',
       message: `El NEM debe ser mayor o igual a 5,5. Valor recibido: ${data.nem || '—'}.`,
+    }
+  }
+
+  const anoMatricula = parseInt(String(data.anoIngreso || '').trim(), 10)
+  if (isNaN(anoMatricula) || anoMatricula !== 2026) {
+    return {
+      ok: false,
+      code: 'matricula_curso',
+      message:
+        'Solo pueden postular quienes acrediten matrícula en curso correspondiente al año 2026. El año indicado no cumple este requisito.',
     }
   }
 

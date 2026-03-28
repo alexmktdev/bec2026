@@ -47,6 +47,8 @@ function etiquetaRechazoEntrada(code: RechazoEntradaCode): string {
       return 'RUT inválido'
     case 'declaracion':
       return 'Declaración jurada no aceptada'
+    case 'matricula_curso':
+      return 'Matrícula en curso no correspondiente a 2026'
     default:
       return 'Rechazo de entrada'
   }
@@ -60,6 +62,7 @@ function toRechazoEntradaCode(code: string): RechazoEntradaCode {
     case 'duplicate':
     case 'rut_invalido':
     case 'declaracion':
+    case 'matricula_curso':
       return code
     default:
       return 'desconocido'
@@ -84,6 +87,7 @@ async function registrarRechazoEntradaEnFirestore(
     rejectionFlags: {
       edad: code === 'edad',
       nem: code === 'nem',
+      matriculaCurso: code === 'matricula_curso',
       historical: code === 'historical',
       duplicate: code === 'duplicate',
     },

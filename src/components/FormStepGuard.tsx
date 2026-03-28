@@ -12,10 +12,9 @@ const STEP_TO_ROUTE: Record<number, string> = {
   2: '/antecedentes_academicos_3',
   3: '/antecedentes_familiares_4',
   4: '/cuenta_bancaria_5',
-  5: '/observaciones_6',
-  6: '/documentos_7',
-  7: '/declaracion_jurada_8',
-  8: '/evaluando_postulacion_9',
+  5: '/documentos_7',
+  6: '/declaracion_jurada_8',
+  7: '/evaluando_postulacion_9',
 }
 
 export function FormStepGuard({ step, children }: Props) {
@@ -29,4 +28,3 @@ export function FormStepGuard({ step, children }: Props) {
 
   return <>{children}</>
 }
-

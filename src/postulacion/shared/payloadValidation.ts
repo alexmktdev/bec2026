@@ -4,6 +4,7 @@
  */
 import { z } from 'zod'
 import { validarRutMatematico } from './rut'
+import { refinarCuentaBancaria } from './cuentaBancariaSchema'
 
 /** Schema para los datos del postulante (formulario completo). */
 export const PostulanteDataSchema = z.object({
@@ -26,7 +27,7 @@ export const PostulanteDataSchema = z.object({
   comuna: z.string().min(1, 'Comuna es obligatoria'),
   carrera: z.string().min(1, 'Carrera es obligatoria'),
   duracionSemestres: z.string().min(1, 'Duración es obligatoria'),
-  anoIngreso: z.string().min(1, 'Año de ingreso es obligatorio'),
+  anoIngreso: z.string().min(1, 'Matrícula en curso es obligatoria'),
 
   totalIntegrantes: z.string().min(1, 'Total de integrantes es obligatorio'),
   tramoRegistroSocial: z.string().min(1, 'Tramo RSH es obligatorio'),
@@ -36,15 +37,21 @@ export const PostulanteDataSchema = z.object({
   enfermedadCatastrofica: z.string().min(1),
   enfermedadCronica: z.string().min(1),
 
-  numeroCuenta: z.string().min(1, 'Número de cuenta es obligatorio'),
-  rutCuenta: z.string().min(1, 'RUT de cuenta es obligatorio'),
+  tipoCuentaBancaria: z.enum(['cuenta_rut', 'otra']),
+  numeroCuenta: z.string(),
+  rutCuenta: z.string(),
+  otraNumeroCuenta: z.string(),
+  otraTipoCuenta: z.string(),
+  otraBanco: z.string(),
+  otraBancoDetalle: z.string(),
+  otraRutTitular: z.string(),
 
   observacion: z.string(),
 
   declaracionJuradaAceptada: z.literal(true, {
     message: 'Debe aceptar la declaración jurada',
   }),
-})
+}).superRefine(refinarCuentaBancaria)
 
 /** Schema para los booleanos de documentos subidos. */
 export const DocumentosSubidosSchema = z.object({

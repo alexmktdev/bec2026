@@ -1,7 +1,10 @@
 import { useMemo, useState } from 'react'
+import { z } from 'zod'
 import type { PostulanteFirestore } from '../../types/postulante'
 import { actualizarPostulante } from '../../services/postulacionService'
 import { calcularPuntajeTotal } from '../../services/scoring'
+import { refinarCuentaBancaria } from '../../postulacion/shared/cuentaBancariaSchema'
+import { BANCOS_CHILE_OPCIONES, TIPOS_CUENTA_OTRA } from '../../postulacion/shared/bancosChile'
 
 interface Props {
   postulante: PostulanteFirestore
@@ -105,8 +108,14 @@ export function PostulanteEdit({ postulante, onClose, onGuardado }: Props) {
     tieneDosOMasHermanosOHijosEstudiando: postulante.tieneDosOMasHermanosOHijosEstudiando ?? '',
     enfermedadCatastrofica: postulante.enfermedadCatastrofica ?? '',
     enfermedadCronica: postulante.enfermedadCronica ?? '',
+    tipoCuentaBancaria: (postulante.tipoCuentaBancaria ?? 'cuenta_rut') as 'cuenta_rut' | 'otra',
     numeroCuenta: postulante.numeroCuenta ?? '',
     rutCuenta: postulante.rutCuenta ?? '',
+    otraNumeroCuenta: postulante.otraNumeroCuenta ?? '',
+    otraTipoCuenta: postulante.otraTipoCuenta ?? '',
+    otraBanco: postulante.otraBanco ?? '',
+    otraBancoDetalle: postulante.otraBancoDetalle ?? '',
+    otraRutTitular: postulante.otraRutTitular ?? '',
     observacion: postulante.observacion ?? '',
   })
   const [guardando, setGuardando] = useState(false)
@@ -133,6 +142,34 @@ export function PostulanteEdit({ postulante, onClose, onGuardado }: Props) {
     }
     if (form.email && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(form.email)) {
       setError('El formato del email no es válido.'); return
+    }
+
+    const cuentaSchema = z
+      .object({
+        tipoCuentaBancaria: z.enum(['cuenta_rut', 'otra']),
+        numeroCuenta: z.string(),
+        rutCuenta: z.string(),
+        otraNumeroCuenta: z.string(),
+        otraTipoCuenta: z.string(),
+        otraBanco: z.string(),
+        otraBancoDetalle: z.string(),
+        otraRutTitular: z.string(),
+      })
+      .superRefine(refinarCuentaBancaria)
+    const cuentaParsed = cuentaSchema.safeParse({
+      tipoCuentaBancaria: form.tipoCuentaBancaria,
+      numeroCuenta: form.numeroCuenta,
+      rutCuenta: form.rutCuenta,
+      otraNumeroCuenta: form.otraNumeroCuenta,
+      otraTipoCuenta: form.otraTipoCuenta,
+      otraBanco: form.otraBanco,
+      otraBancoDetalle: form.otraBancoDetalle,
+      otraRutTitular: form.otraRutTitular,
+    })
+    if (!cuentaParsed.success) {
+      const msg = cuentaParsed.error.issues[0]?.message ?? 'Revise los datos de cuenta bancaria.'
+      setError(msg)
+      return
     }
 
     setGuardando(true)
@@ -236,7 +273,7 @@ export function PostulanteEdit({ postulante, onClose, onGuardado }: Props) {
             <Field label="Comuna" name="comuna" value={form.comuna} onChange={handleChange} />
             <Field label="Carrera" name="carrera" value={form.carrera} onChange={handleChange} />
             <Field label="Duración (semestres)" name="duracionSemestres" value={form.duracionSemestres} onChange={handleChange} />
-            <Field label="Año ingreso" name="anoIngreso" value={form.anoIngreso} onChange={handleChange} />
+            <Field label="Matrícula en curso (año)" name="anoIngreso" value={form.anoIngreso} onChange={handleChange} />
 
             <SectionTitle>Antecedentes familiares y socioeconómicos</SectionTitle>
             <Field label="Total integrantes" name="totalIntegrantes" value={form.totalIntegrantes} onChange={handleChange} />
@@ -260,8 +297,49 @@ export function PostulanteEdit({ postulante, onClose, onGuardado }: Props) {
             <SelectField label="Enfermedad crónica" name="enfermedadCronica" value={form.enfermedadCronica} onChange={handleChange} options={SI_NO} />
 
             <SectionTitle>Cuenta bancaria</SectionTitle>
-            <Field label="N° cuenta" name="numeroCuenta" value={form.numeroCuenta} onChange={handleChange} />
-            <Field label="RUT titular" name="rutCuenta" value={form.rutCuenta} onChange={handleChange} />
+            <SelectField
+              label="Modalidad"
+              name="tipoCuentaBancaria"
+              value={form.tipoCuentaBancaria}
+              onChange={handleChange}
+              options={[
+                { value: 'cuenta_rut', label: 'Cuenta RUT' },
+                { value: 'otra', label: 'Otra cuenta' },
+              ]}
+            />
+            {form.tipoCuentaBancaria === 'cuenta_rut' ? (
+              <>
+                <Field label="N° cuenta RUT" name="numeroCuenta" value={form.numeroCuenta} onChange={handleChange} />
+                <Field label="RUT titular" name="rutCuenta" value={form.rutCuenta} onChange={handleChange} />
+              </>
+            ) : (
+              <>
+                <Field label="Número de cuenta" name="otraNumeroCuenta" value={form.otraNumeroCuenta} onChange={handleChange} />
+                <SelectField
+                  label="Tipo de cuenta"
+                  name="otraTipoCuenta"
+                  value={form.otraTipoCuenta}
+                  onChange={handleChange}
+                  options={TIPOS_CUENTA_OTRA}
+                />
+                <SelectField
+                  label="Banco"
+                  name="otraBanco"
+                  value={form.otraBanco}
+                  onChange={handleChange}
+                  options={BANCOS_CHILE_OPCIONES}
+                />
+                {form.otraBanco === 'Otro' && (
+                  <Field
+                    label="Especifique banco"
+                    name="otraBancoDetalle"
+                    value={form.otraBancoDetalle}
+                    onChange={handleChange}
+                  />
+                )}
+                <Field label="RUT titular" name="otraRutTitular" value={form.otraRutTitular} onChange={handleChange} />
+              </>
+            )}
 
             <SectionTitle>Observaciones</SectionTitle>
             <div className="col-span-2 sm:col-span-3 flex flex-col gap-1">

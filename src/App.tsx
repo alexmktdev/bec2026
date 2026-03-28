@@ -13,7 +13,6 @@ const AntecedentesPostulante = lazy(() => import('./components/AntecedentesPostu
 const AntecedentesAcademicos = lazy(() => import('./components/AntecedentesAcademicos').then(module => ({ default: module.AntecedentesAcademicos })))
 const AntecedentesFamiliares = lazy(() => import('./components/AntecedentesFamiliares').then(module => ({ default: module.AntecedentesFamiliares })))
 const CuentaBancaria = lazy(() => import('./components/CuentaBancaria').then(module => ({ default: module.CuentaBancaria })))
-const Observaciones = lazy(() => import('./components/Observaciones').then(module => ({ default: module.Observaciones })))
 const DocumentosPostulacion = lazy(() => import('./components/DocumentosPostulacion').then(module => ({ default: module.DocumentosPostulacion })))
 const DeclaracionJurada = lazy(() => import('./components/DeclaracionJurada').then(module => ({ default: module.DeclaracionJurada })))
 
@@ -100,21 +99,18 @@ function App() {
             path="/cuenta_bancaria_5"
             element={<PageContainer><FormStepGuard step={4}><CuentaBancaria /></FormStepGuard></PageContainer>}
           />
-          <Route
-            path="/observaciones_6"
-            element={<PageContainer><FormStepGuard step={5}><Observaciones /></FormStepGuard></PageContainer>}
-          />
+          <Route path="/observaciones_6" element={<Navigate to="/documentos_7" replace />} />
           <Route
             path="/documentos_7"
-            element={<PageContainer><FormStepGuard step={6}><DocumentosPostulacion /></FormStepGuard></PageContainer>}
+            element={<PageContainer><FormStepGuard step={5}><DocumentosPostulacion /></FormStepGuard></PageContainer>}
           />
           <Route
             path="/declaracion_jurada_8"
-            element={<PageContainer><FormStepGuard step={7}><DeclaracionJurada /></FormStepGuard></PageContainer>}
+            element={<PageContainer><FormStepGuard step={6}><DeclaracionJurada /></FormStepGuard></PageContainer>}
           />
           <Route
             path="/evaluando_postulacion_9"
-            element={<PageContainer><FormStepGuard step={8}><EvaluandoPostulacion /></FormStepGuard></PageContainer>}
+            element={<PageContainer><FormStepGuard step={7}><EvaluandoPostulacion /></FormStepGuard></PageContainer>}
           />
           <Route path="/postulacion_exitosa_9" element={<PageContainer><PostulacionExitosa /></PageContainer>} />
           <Route path="/postulacion_rechazada" element={<PageContainer><PostulacionRechazada /></PageContainer>} />

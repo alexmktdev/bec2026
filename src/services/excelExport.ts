@@ -2,6 +2,7 @@ import ExcelJS from 'exceljs'
 import { saveAs } from 'file-saver'
 import type { PostulanteFirestore } from '../types/postulante'
 import { formatDate } from '../utils/inputFormatters'
+import { resumenCuentaBancariaListado } from '../utils/cuentaBancariaDisplay'
 
 const COLUMNS: { header: string; key: string; width: number }[] = [
   { header: 'Nombres', key: 'nombres', width: 20 },
@@ -22,7 +23,7 @@ const COLUMNS: { header: string; key: string; width: number }[] = [
   { header: 'Comuna', key: 'comuna', width: 15 },
   { header: 'Carrera', key: 'carrera', width: 25 },
   { header: 'Duración Semestres', key: 'duracionSemestres', width: 16 },
-  { header: 'Año Ingreso', key: 'anoIngreso', width: 12 },
+  { header: 'Matrícula (año)', key: 'anoIngreso', width: 12 },
   { header: 'Total Integrantes', key: 'totalIntegrantes', width: 16 },
   { header: 'Tramo RSH', key: 'tramoRegistroSocial', width: 12 },
   { header: 'Hermanos/Hijos Estudiando', key: 'hermanosHijos', width: 22 },
@@ -30,8 +31,8 @@ const COLUMNS: { header: string; key: string; width: number }[] = [
   { header: '2+ Hermanos/Hijos', key: 'dosHermanos', width: 16 },
   { header: 'Enfermedad Catastrófica', key: 'enfCatastrofica', width: 20 },
   { header: 'Enfermedad Crónica', key: 'enfCronica', width: 18 },
-  { header: 'N° Cuenta', key: 'numeroCuenta', width: 18 },
-  { header: 'RUT Cuenta', key: 'rutCuenta', width: 14 },
+  { header: 'Tipo cuenta banc.', key: 'tipoCuentaBancaria', width: 14 },
+  { header: 'Cuenta bancaria (resumen)', key: 'cuentaResumen', width: 40 },
   { header: 'Observaciones', key: 'observacion', width: 25 },
   { header: 'Puntaje NEM', key: 'pNem', width: 12 },
   { header: 'Puntaje RSH', key: 'pRsh', width: 12 },
@@ -79,8 +80,8 @@ function toRow(p: PostulanteFirestore): Record<string, unknown> {
     dosHermanos: p.tieneDosOMasHermanosOHijosEstudiando,
     enfCatastrofica: p.enfermedadCatastrofica,
     enfCronica: p.enfermedadCronica,
-    numeroCuenta: p.numeroCuenta,
-    rutCuenta: p.rutCuenta,
+    tipoCuentaBancaria: p.tipoCuentaBancaria === 'otra' ? 'Otra' : 'Cuenta RUT',
+    cuentaResumen: resumenCuentaBancariaListado(p),
     observacion: p.observacion,
     pNem: p.puntaje.nem,
     pRsh: p.puntaje.rsh,

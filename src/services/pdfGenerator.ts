@@ -2,6 +2,8 @@ import { jsPDF } from 'jspdf'
 import autoTable from 'jspdf-autotable'
 import type { PostulanteFirestore } from '../types/postulante'
 import { formatDate } from '../utils/inputFormatters'
+import { resumenCuentaBancariaListado } from '../utils/cuentaBancariaDisplay'
+import { etiquetaBancoOtra } from '../postulacion/shared/cuentaBancariaSchema'
 
 export function generarReportePDF(postulantes: PostulanteFirestore[]) {
   const doc = new jsPDF({ orientation: 'landscape', unit: 'mm', format: 'a4' })
@@ -32,7 +34,7 @@ export function generarReportePDF(postulantes: PostulanteFirestore[]) {
       'Comuna',
       'Carrera',
       'Duración Semestres',
-      'Año Ingreso',
+      'Matrícula (año)',
       'Total Integrantes',
       'Tramo RSH',
       'Hermanos/Hijos Estudiando',
@@ -40,8 +42,8 @@ export function generarReportePDF(postulantes: PostulanteFirestore[]) {
       '2+ Hermanos/Hijos',
       'Enfermedad Catastrófica',
       'Enfermedad Crónica',
-      'N° Cuenta',
-      'RUT Cuenta',
+      'Tipo cuenta',
+      'Cuenta bancaria',
       'Observaciones',
       'Puntaje NEM',
       'Puntaje RSH',
@@ -80,8 +82,8 @@ export function generarReportePDF(postulantes: PostulanteFirestore[]) {
     p.tieneDosOMasHermanosOHijosEstudiando,
     p.enfermedadCatastrofica,
     p.enfermedadCronica,
-    p.numeroCuenta,
-    p.rutCuenta,
+    p.tipoCuentaBancaria === 'otra' ? 'Otra' : 'Cuenta RUT',
+    resumenCuentaBancariaListado(p),
     p.observacion,
     String(p.puntaje.nem),
     String(p.puntaje.rsh),
@@ -171,19 +173,32 @@ export function generarReporteIndividualPDF(p: PostulanteFirestore): Blob {
 
   y = compactTable('2. Antecedentes Académicos y Familiares', [
     ['Institución', p.nombreInstitucion, 'NEM', p.nem],
-    ['Carrera', p.carrera, 'Año Ingreso', p.anoIngreso],
+    ['Carrera', p.carrera, 'Matrícula (año)', p.anoIngreso],
     ['Comuna', p.comuna, 'Duración', `${p.duracionSemestres} sem.`],
     ['Total Integrantes', p.totalIntegrantes, 'Tramo RSH', p.tramoRegistroSocial],
     ['Hnos. Estudiando', p.tieneHermanosOHijosEstudiando, 'Enf. Catastrófica', p.enfermedadCatastrofica],
   ], y, [30, 60, 30, 60])
 
-  y = compactTable('3. Información Bancaria y Puntaje', [
-    ['Banco / Cuenta', p.numeroCuenta, 'NEM Puntos', String(p.puntaje.nem)],
-    ['RUT Titular', p.rutCuenta, 'RSH Puntos', String(p.puntaje.rsh)],
-    ['Observación', p.observacion || 'Sin observaciones', 'Enf. Puntos', String(p.puntaje.enfermedad)],
-    ['', '', 'Hnos. Puntos', String(p.puntaje.hermanos)],
-    ['', '', 'TOTAL PUNTAJE', String(p.puntaje.total)],
-  ], y, [30, 60, 30, 60])
+  y = compactTable(
+    '3. Información Bancaria y Puntaje',
+    p.tipoCuentaBancaria === 'otra'
+      ? [
+          ['Modalidad', 'Otra cuenta bancaria', 'NEM Puntos', String(p.puntaje.nem)],
+          ['Banco', etiquetaBancoOtra(p), 'RSH Puntos', String(p.puntaje.rsh)],
+          ['Tipo de cuenta', p.otraTipoCuenta || '—', 'Enf. Puntos', String(p.puntaje.enfermedad)],
+          ['N° cuenta', p.otraNumeroCuenta || '—', 'Hnos. Puntos', String(p.puntaje.hermanos)],
+          ['RUT titular', p.otraRutTitular || '—', 'TOTAL PUNTAJE', String(p.puntaje.total)],
+        ]
+      : [
+          ['Modalidad', 'Cuenta RUT', 'NEM Puntos', String(p.puntaje.nem)],
+          ['N° cuenta RUT', p.numeroCuenta || '—', 'RSH Puntos', String(p.puntaje.rsh)],
+          ['RUT titular', p.rutCuenta || '—', 'Enf. Puntos', String(p.puntaje.enfermedad)],
+          ['Observación', p.observacion || 'Sin observaciones', 'Hnos. Puntos', String(p.puntaje.hermanos)],
+          ['', '', 'TOTAL PUNTAJE', String(p.puntaje.total)],
+        ],
+    y,
+    [30, 60, 30, 60],
+  )
 
   // Documentos en una tabla simple
   const docRows = Object.entries(p.documentUrls || {}).map(([key, url]) => [

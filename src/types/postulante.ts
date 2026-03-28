@@ -30,6 +30,7 @@ export interface PostulanteData {
   comuna: string
   carrera: string
   duracionSemestres: string
+  /** Año de matrícula en curso (debe ser 2026 para aprobar por este criterio). */
   anoIngreso: string
 
   // Paso 3 - Familiares
@@ -41,11 +42,18 @@ export interface PostulanteData {
   enfermedadCatastrofica: string
   enfermedadCronica: string
 
-  // Paso 4 - Cuenta bancaria
+  // Paso 4 - Cuenta bancaria (Cuenta RUT u otra cuenta; una sola vía válida)
+  tipoCuentaBancaria: 'cuenta_rut' | 'otra'
   numeroCuenta: string
   rutCuenta: string
+  otraNumeroCuenta: string
+  otraTipoCuenta: string
+  otraBanco: string
+  /** Si otraBanco es "Otro", nombre del banco indicado por el postulante. */
+  otraBancoDetalle: string
+  otraRutTitular: string
 
-  // Paso 5 - Observaciones
+  /** Legado: ya no hay paso de observaciones en el formulario; se mantiene para datos históricos. */
   observacion: string
 
   // Paso 7 - Declaracion jurada
@@ -113,6 +121,7 @@ export interface AuditLog {
 export type RechazoEntradaCode =
   | 'edad'
   | 'nem'
+  | 'matricula_curso'
   | 'historical'
   | 'duplicate'
   | 'rut_invalido'
@@ -128,6 +137,8 @@ export interface PostulanteRechazadoEntrada extends PostulanteData {
   rejectionFlags: {
     edad: boolean
     nem: boolean
+    /** Rechazo por matrícula distinta de 2026 (registros antiguos pueden no traer la clave). */
+    matriculaCurso?: boolean
     historical: boolean
     duplicate: boolean
   }

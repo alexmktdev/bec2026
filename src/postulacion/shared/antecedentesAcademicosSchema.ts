@@ -13,10 +13,10 @@ export const AntecedentesAcademicosSchema = z.object({
     return !isNaN(n) && n > 0 && n <= 20
   }, 'Duración inválida'),
   anoIngreso: z.string().refine((val) => {
-    const n = parseInt(val)
+    const n = parseInt(val, 10)
     const currentYear = new Date().getFullYear()
-    return !isNaN(n) && n > 1900 && n <= currentYear
-  }, 'Año de ingreso inválido'),
+    return !isNaN(n) && n > 1900 && n <= currentYear + 1
+  }, 'Año de matrícula en curso inválido'),
 })
 
 export type AntecedentesAcademicosData = z.infer<typeof AntecedentesAcademicosSchema>

@@ -1,5 +1,6 @@
 import type { PostulanteFirestore } from '../../../types/postulante'
 import { formatDate, formatDateTime } from '../../../utils/inputFormatters'
+import { resumenCuentaBancariaListado } from '../../../utils/cuentaBancariaDisplay'
 import { useAuth } from '../../../hooks/useAuth'
 
 interface RevisionTableProps {
@@ -54,7 +55,7 @@ export function RevisionTable({
               <th className="px-2 py-2 text-left font-semibold uppercase text-slate-500 whitespace-nowrap">Comuna</th>
               <th className="px-2 py-2 text-left font-semibold uppercase text-slate-500 whitespace-nowrap">Carrera</th>
               <th className="px-2 py-2 text-left font-semibold uppercase text-slate-500 whitespace-nowrap text-center">Duración</th>
-              <th className="px-2 py-2 text-left font-semibold uppercase text-slate-500 whitespace-nowrap text-center">Año Ingreso</th>
+              <th className="px-2 py-2 text-left font-semibold uppercase text-slate-500 whitespace-nowrap text-center">Matrícula (año)</th>
               <th className="px-2 py-2 text-left font-semibold uppercase text-slate-500 whitespace-nowrap text-center">Integrantes</th>
               <th className="px-2 py-2 text-left font-semibold uppercase text-teal-600 whitespace-nowrap bg-teal-50/30">Tramo RSH</th>
               <th className="px-2 py-2 text-left font-semibold uppercase text-purple-600 whitespace-nowrap bg-purple-50/30">Hnos. Estudiando</th>
@@ -62,8 +63,7 @@ export function RevisionTable({
               <th className="px-2 py-2 text-left font-semibold uppercase text-purple-600 whitespace-nowrap bg-purple-50/30">2+ Hnos/Hijos</th>
               <th className="px-2 py-2 text-left font-semibold uppercase text-rose-600 whitespace-nowrap bg-rose-50/30">Enf. Catastrófica</th>
               <th className="px-2 py-2 text-left font-semibold uppercase text-rose-600 whitespace-nowrap bg-rose-50/30">Enf. Crónica</th>
-              <th className="px-2 py-2 text-left font-semibold uppercase text-slate-500 whitespace-nowrap">N° Cuenta</th>
-              <th className="px-2 py-2 text-left font-semibold uppercase text-slate-500 whitespace-nowrap">RUT Cuenta</th>
+              <th className="px-2 py-2 text-left font-semibold uppercase text-slate-500 whitespace-nowrap min-w-[180px]">Cuenta bancaria</th>
               <th className="px-2 py-2 text-left font-semibold uppercase text-slate-500 whitespace-nowrap">Obs.</th>
               <th className="px-2 py-2 text-left font-semibold uppercase text-indigo-700 whitespace-nowrap bg-indigo-50/50">Pts. NEM</th>
               <th className="px-2 py-2 text-left font-semibold uppercase text-teal-700 whitespace-nowrap bg-teal-50/50">Pts. RSH</th>
@@ -79,7 +79,7 @@ export function RevisionTable({
           <tbody className="divide-y divide-slate-100 bg-white">
             {postulantes.length === 0 ? (
               <tr>
-                <td colSpan={36} className="py-12 text-center text-slate-400 font-medium">
+                <td colSpan={35} className="py-12 text-center text-slate-400 font-medium">
                   {emptyMsg}
                 </td>
               </tr>
@@ -118,8 +118,12 @@ export function RevisionTable({
                   <td className="px-2 py-1.5 text-purple-700 whitespace-nowrap text-center bg-purple-50/20 font-medium">{p.tieneDosOMasHermanosOHijosEstudiando}</td>
                   <td className="px-2 py-1.5 text-rose-700 whitespace-nowrap text-center bg-rose-50/20 font-semibold">{p.enfermedadCatastrofica}</td>
                   <td className="px-2 py-1.5 text-rose-700 whitespace-nowrap text-center bg-rose-50/20 font-semibold">{p.enfermedadCronica}</td>
-                  <td className="px-2 py-1.5 text-slate-600 whitespace-nowrap font-mono">{p.numeroCuenta}</td>
-                  <td className="px-2 py-1.5 text-slate-600 whitespace-nowrap font-mono">{p.rutCuenta}</td>
+                  <td
+                    className="px-2 py-1.5 text-slate-600 text-[9px] leading-tight max-w-[200px]"
+                    title={resumenCuentaBancariaListado(p)}
+                  >
+                    {resumenCuentaBancariaListado(p)}
+                  </td>
                   <td className="px-2 py-1.5 text-slate-600 whitespace-nowrap truncate max-w-[100px]" title={p.observacion}>{p.observacion}</td>
                   <td className="px-2 py-1.5 text-indigo-900 whitespace-nowrap text-center font-black bg-indigo-50/40">{p.puntaje.nem}</td>
                   <td className="px-2 py-1.5 text-teal-900 whitespace-nowrap text-center font-black bg-teal-50/40">{p.puntaje.rsh}</td>

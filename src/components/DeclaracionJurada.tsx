@@ -9,7 +9,7 @@ export function DeclaracionJurada() {
   function handleSubmit(event: React.FormEvent) {
     event.preventDefault()
     if (data.declaracionJuradaAceptada) {
-      markStepCompleted(7)
+      markStepCompleted(6)
       navigate('/evaluando_postulacion_9')
     }
   }
@@ -26,7 +26,7 @@ export function DeclaracionJurada() {
           className="mx-auto mb-4 h-28 w-auto object-contain"
         />
         <header className="space-y-6 text-center">
-          <p className="text-sm font-medium text-slate-500">Paso 7 de 7</p>
+          <p className="text-sm font-medium text-slate-500">Paso 6 de 6</p>
           <h1 className="text-2xl font-semibold text-slate-900">
             Declaración Jurada
           </h1>
