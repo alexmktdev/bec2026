@@ -1,25 +1,19 @@
-import { getCallableCorsOrigins } from './allowedWebOrigins'
+import { CALLABLE_CORS_ORIGINS } from './allowedWebOrigins'
 
 /**
  * Opciones comunes para callables expuestas al navegador (postulación + panel admin).
  * Requiere `initializeAppCheck` en el cliente (`src/firebase/config.ts`).
  *
- * CORS: lista explícita vía `getCallableCorsOrigins()` (ver `allowedWebOrigins.ts`).
- *
- * Nota (consola Firebase): activar “Enforce” de App Check en Firestore/Storage/Auth
- * es independiente y puede bloquear SDKs o scripts sin token; hazlo solo si lo necesitas.
+ * - `cors`: lista + regex (Vercel producción/previews y Firebase Hosting). Evita depender
+ *   solo de `cors: true` si el runtime no refleja bien el Origin en algunos despliegues.
+ * - `invoker: 'public'`: el servicio Cloud Run debe permitir invocaciones sin login de Google;
+ *   si falta, Google responde 403 **sin** cabeceras CORS y el navegador muestra error CORS.
  */
 export function webCallableBase() {
-  // En el emulador de Functions, App Check no aplica; en Cloud (deploy) sí.
   const runningInFunctionsEmulator = process.env.FUNCTIONS_EMULATOR === 'true'
   return {
-    cors: getCallableCorsOrigins(),
+    cors: runningInFunctionsEmulator ? true : CALLABLE_CORS_ORIGINS,
     invoker: 'public' as const,
     enforceAppCheck: !runningInFunctionsEmulator,
   }
 }
-
-
-
-
-

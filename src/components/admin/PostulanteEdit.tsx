@@ -4,7 +4,8 @@ import type { PostulanteFirestore } from '../../types/postulante'
 import { actualizarPostulante } from '../../services/postulacionService'
 import { calcularPuntajeTotal } from '../../services/scoring'
 import { refinarCuentaBancaria } from '../../postulacion/shared/cuentaBancariaSchema'
-import { BANCOS_CHILE_OPCIONES, TIPOS_CUENTA_OTRA } from '../../postulacion/shared/bancosChile'
+import { TIPOS_CUENTA_OTRA } from '../../postulacion/shared/bancosChile'
+import { capitalizarTituloPorPalabras, soloTexto } from '../../utils/inputFormatters'
 
 interface Props {
   postulante: PostulanteFirestore
@@ -322,21 +323,15 @@ export function PostulanteEdit({ postulante, onClose, onGuardado }: Props) {
                   onChange={handleChange}
                   options={TIPOS_CUENTA_OTRA}
                 />
-                <SelectField
+                <Field
                   label="Banco"
                   name="otraBanco"
                   value={form.otraBanco}
-                  onChange={handleChange}
-                  options={BANCOS_CHILE_OPCIONES}
+                  onChange={(e) => {
+                    const v = capitalizarTituloPorPalabras(soloTexto(e.target.value))
+                    setForm((prev) => ({ ...prev, otraBanco: v }))
+                  }}
                 />
-                {form.otraBanco === 'Otro' && (
-                  <Field
-                    label="Especifique banco"
-                    name="otraBancoDetalle"
-                    value={form.otraBancoDetalle}
-                    onChange={handleChange}
-                  />
-                )}
                 <Field label="RUT titular" name="otraRutTitular" value={form.otraRutTitular} onChange={handleChange} />
               </>
             )}

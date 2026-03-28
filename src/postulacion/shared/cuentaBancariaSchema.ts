@@ -68,18 +68,12 @@ export function refinarCuentaBancaria(data: CuentaBancariaFormShape, ctx: z.Refi
   }
 
   const banco = data.otraBanco.trim()
-  if (banco.length < 2) {
-    ctx.addIssue({ code: 'custom', path: ['otraBanco'], message: 'Seleccione el banco.' })
-  }
-  if (banco === 'Otro') {
-    const det = data.otraBancoDetalle.trim()
-    if (det.length < 3) {
-      ctx.addIssue({
-        code: 'custom',
-        path: ['otraBancoDetalle'],
-        message: 'Especifique el nombre del banco (mín. 3 caracteres).',
-      })
-    }
+  if (banco.length < 3) {
+    ctx.addIssue({
+      code: 'custom',
+      path: ['otraBanco'],
+      message: 'Indique el nombre del banco (mín. 3 caracteres).',
+    })
   }
 
   const rut = data.otraRutTitular.trim()
@@ -107,9 +101,10 @@ export const CuentaBancariaSchema = z
 
 export type CuentaBancariaData = z.infer<typeof CuentaBancariaSchema>
 
-/** Texto del banco para mostrar en admin/export (sin exponer lógica en el cliente más allá del formulario). */
+/** Texto del banco para mostrar en admin/export (compat. registros antiguos con "Otro" + detalle). */
 export function etiquetaBancoOtra(data: Pick<CuentaBancariaFormShape, 'otraBanco' | 'otraBancoDetalle'>): string {
   const b = data.otraBanco.trim()
-  if (b === 'Otro') return data.otraBancoDetalle.trim() || 'Otro'
-  return b
+  const det = data.otraBancoDetalle.trim()
+  if (b === 'Otro' && det) return det
+  return b || det || '—'
 }

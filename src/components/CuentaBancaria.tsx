@@ -5,9 +5,9 @@ import { zodResolver } from '@hookform/resolvers/zod'
 
 import logoMolina from '../assets/logo-molina.png'
 import { usePostulacion } from '../contexts/PostulacionContext'
-import { soloNumeros } from '../utils/inputFormatters'
+import { capitalizarTituloPorPalabras, soloNumeros, soloTexto } from '../utils/inputFormatters'
 import { CuentaBancariaSchema, type CuentaBancariaData } from '../postulacion/shared/cuentaBancariaSchema'
-import { BANCOS_CHILE_OPCIONES, TIPOS_CUENTA_OTRA } from '../postulacion/shared/bancosChile'
+import { TIPOS_CUENTA_OTRA } from '../postulacion/shared/bancosChile'
 
 function formatRut(value: string): string {
   const cleanRut = value.replace(/\./g, '').replace(/-/g, '')
@@ -45,7 +45,6 @@ export function CuentaBancaria() {
   })
 
   const tipo = watch('tipoCuentaBancaria')
-  const otraBancoSel = watch('otraBanco')
 
   useEffect(() => {
     const subscription = watch((values) => {
@@ -169,33 +168,22 @@ export function CuentaBancaria() {
                 <p className="text-xs font-medium text-red-500">{errors.otraTipoCuenta.message}</p>
               )}
             </div>
-            <div className="space-y-1.5">
+            <div className="space-y-1.5 md:col-span-2">
               <label className="text-sm font-bold text-slate-700">Banco</label>
-              <select
-                {...register('otraBanco')}
-                className={`block w-full rounded-lg border px-3 py-2.5 text-sm bg-white focus:ring-2 focus:ring-blue-100 outline-none ${errors.otraBanco ? 'border-red-400' : 'border-slate-300 focus:border-blue-500'}`}
-              >
-                {BANCOS_CHILE_OPCIONES.map((o) => (
-                  <option key={o.value || 'empty'} value={o.value}>
-                    {o.label}
-                  </option>
-                ))}
-              </select>
+              <input
+                {...register('otraBanco', {
+                  onChange: (e) => {
+                    const limpio = soloTexto(e.target.value)
+                    setValue('otraBanco', capitalizarTituloPorPalabras(limpio))
+                  },
+                })}
+                placeholder="Ej: Banco Estado"
+                autoComplete="organization"
+                className={`block w-full rounded-lg border px-3 py-2.5 text-sm focus:ring-2 focus:ring-blue-100 outline-none ${errors.otraBanco ? 'border-red-400' : 'border-slate-300 focus:border-blue-500'}`}
+              />
+              <p className="text-[10px] text-slate-400">Escriba el nombre; se formatea automáticamente (cada palabra con mayúscula inicial).</p>
               {errors.otraBanco && <p className="text-xs font-medium text-red-500">{errors.otraBanco.message}</p>}
             </div>
-            {otraBancoSel === 'Otro' && (
-              <div className="space-y-1.5 md:col-span-2">
-                <label className="text-sm font-bold text-slate-700">Especifique el banco</label>
-                <input
-                  {...register('otraBancoDetalle')}
-                  placeholder="Nombre del banco o cooperativa"
-                  className={`block w-full rounded-lg border px-3 py-2.5 text-sm focus:ring-2 focus:ring-blue-100 outline-none ${errors.otraBancoDetalle ? 'border-red-400' : 'border-slate-300 focus:border-blue-500'}`}
-                />
-                {errors.otraBancoDetalle && (
-                  <p className="text-xs font-medium text-red-500">{errors.otraBancoDetalle.message}</p>
-                )}
-              </div>
-            )}
             <div className="space-y-1.5 md:col-span-2">
               <label className="text-sm font-bold text-slate-700">RUT asociado al titular de la cuenta</label>
               <input

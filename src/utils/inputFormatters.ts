@@ -93,3 +93,20 @@ export function formatDateTimeDmyHm(value: string | undefined | null): string {
   return `${dd}-${mm}-${yyyy} ${hh}:${min}`
 }
 
+const LOCALE_TITULO = 'es-CL'
+
+/**
+ * Primera letra de cada palabra en mayúscula y el resto en minúsculas (p. ej. "banco DE chile" → "Banco De Chile").
+ * Útil para nombres propios tecleados en el formulario.
+ */
+export function capitalizarTituloPorPalabras(value: string): string {
+  return value
+    .split(/\s+/)
+    .map((word) => {
+      if (!word) return ''
+      const first = word.charAt(0).toLocaleUpperCase(LOCALE_TITULO)
+      const rest = word.slice(1).toLocaleLowerCase(LOCALE_TITULO)
+      return first + rest
+    })
+    .join(' ')
+}
