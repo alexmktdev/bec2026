@@ -243,6 +243,10 @@ export function FiltroRevisionDoc() {
           <div className="flex flex-wrap gap-2 items-center">
             <input
               type="text"
+              id="filtro-revision-doc-busqueda"
+              name="filtro_revision_doc_busqueda"
+              autoComplete="off"
+              aria-label="Buscar postulante por nombre o RUT"
               placeholder="Buscar por nombre o RUT..."
               value={busqueda}
               onChange={e => { setBusqueda(e.target.value); setPaginaRevision(1); setPaginaFinal(1) }}

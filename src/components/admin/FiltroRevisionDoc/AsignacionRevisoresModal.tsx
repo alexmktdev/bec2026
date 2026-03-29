@@ -226,10 +226,12 @@ export function AsignacionRevisoresModal({
 
           <div className="flex gap-4 items-end bg-slate-50 p-4 rounded-xl border border-slate-200">
             <div className="flex-1">
-              <label className="block text-xs font-bold text-slate-700 mb-1">Revisor</label>
-              <select 
-                className="w-full rounded-lg border-slate-300 p-2" 
-                value={selectedRevisor} 
+              <label htmlFor="asignacion-tramo-revisor" className="block text-xs font-bold text-slate-700 mb-1">Revisor</label>
+              <select
+                id="asignacion-tramo-revisor"
+                name="asignacion_tramo_revisor"
+                className="w-full rounded-lg border-slate-300 p-2"
+                value={selectedRevisor}
                 onChange={(e) => setSelectedRevisor(e.target.value)}
               >
                 <option value="">Seleccione...</option>
@@ -239,12 +241,28 @@ export function AsignacionRevisoresModal({
               </select>
             </div>
             <div className="w-24">
-              <label className="block text-xs font-bold text-slate-700 mb-1">Del #</label>
-              <input type="number" min={1} className="w-full rounded-lg border-slate-300 p-2 text-center" value={startRange} onChange={e => setStartRange(Number(e.target.value))} />
+              <label htmlFor="asignacion-tramo-desde" className="block text-xs font-bold text-slate-700 mb-1">Del #</label>
+              <input
+                id="asignacion-tramo-desde"
+                name="asignacion_tramo_desde"
+                type="number"
+                min={1}
+                className="w-full rounded-lg border-slate-300 p-2 text-center"
+                value={startRange}
+                onChange={(e) => setStartRange(Number(e.target.value))}
+              />
             </div>
             <div className="w-24">
-              <label className="block text-xs font-bold text-slate-700 mb-1">Al #</label>
-              <input type="number" min={1} className="w-full rounded-lg border-slate-300 p-2 text-center" value={endRange} onChange={e => setEndRange(Number(e.target.value))} />
+              <label htmlFor="asignacion-tramo-hasta" className="block text-xs font-bold text-slate-700 mb-1">Al #</label>
+              <input
+                id="asignacion-tramo-hasta"
+                name="asignacion_tramo_hasta"
+                type="number"
+                min={1}
+                className="w-full rounded-lg border-slate-300 p-2 text-center"
+                value={endRange}
+                onChange={(e) => setEndRange(Number(e.target.value))}
+              />
             </div>
             <button onClick={handleAddTramo} className="bg-blue-800 text-white font-bold px-4 py-2 rounded-lg hover:bg-blue-700">Agregar</button>
           </div>

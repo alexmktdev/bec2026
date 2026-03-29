@@ -54,6 +54,11 @@ export function PostulantesRechazadosEntrada() {
 
         <div className="flex items-center gap-3">
           <input
+            type="search"
+            id="rechazados-entrada-busqueda"
+            name="rechazados_entrada_busqueda"
+            autoComplete="off"
+            aria-label="Buscar rechazados por nombre, RUT o motivo"
             value={q}
             onChange={(e) => setQ(e.target.value)}
             placeholder="Buscar por nombre, RUT o motivo..."

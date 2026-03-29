@@ -114,6 +114,10 @@ export function PostulantesTable({ postulantes, onSelectPostulante, onEliminar, 
       <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
         <input
           type="text"
+          id="postulantes-table-busqueda"
+          name="postulantes_table_busqueda"
+          autoComplete="off"
+          aria-label="Buscar postulante por nombre o RUT"
           placeholder="Buscar por nombre o RUT..."
           value={busqueda}
           onChange={(e) => { setBusqueda(e.target.value); setPagina(1) }}

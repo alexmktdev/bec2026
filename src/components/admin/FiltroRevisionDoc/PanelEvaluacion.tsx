@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { ref, getBlob } from 'firebase/storage'
 import { storage } from '../../../firebase/config'
 import { actualizarDocumentosValidados, cambiarEstado } from '../../../services/postulacionService'
@@ -14,11 +14,15 @@ interface PanelEvaluacionProps {
   onActualizarPostulante?: (updated: PostulanteFirestore) => void
 }
 
+type BlobCacheEntry = { sourceUrl: string; objectUrl: string }
+
 export function PanelEvaluacion({ postulante, onClose, onValidado, onActualizarPostulante }: PanelEvaluacionProps) {
   const [postulanteLocal, setPostulanteLocal] = useState<PostulanteFirestore>(postulante)
   const [validaciones, setValidaciones] = useState<Record<string, boolean>>(
     () => postulante.documentosValidados ?? {},
   )
+  /** Evita un nuevo getBlob desde Storage en cada clic en «Abrir» del mismo documento (misma URL). */
+  const blobCacheRef = useRef<Map<string, BlobCacheEntry>>(new Map())
   const [abriendo, setAbriendo] = useState<string | null>(null)
   const [guardando, setGuardando] = useState(false)
   const [rechazandoDoc, setRechazandoDoc] = useState<string | null>(null)
@@ -33,6 +37,19 @@ export function PanelEvaluacion({ postulante, onClose, onValidado, onActualizarP
   const algunDocValidadoLocal = docEntries.some(([key]) => validaciones[key] === true)
   const validadosCount = docEntries.filter(([key]) => validaciones[key] === true).length
 
+  function clearBlobCache() {
+    blobCacheRef.current.forEach(({ objectUrl }) => URL.revokeObjectURL(objectUrl))
+    blobCacheRef.current.clear()
+  }
+
+  useEffect(() => {
+    return () => clearBlobCache()
+  }, [])
+
+  useEffect(() => {
+    clearBlobCache()
+  }, [postulante.id])
+
   const handleGuardadoEdicion = async (actualizado: PostulanteFirestore) => {
     setPostulanteLocal(actualizado)
     setEditandoPostulante(false)
@@ -45,9 +62,19 @@ export function PanelEvaluacion({ postulante, onClose, onValidado, onActualizarP
     setAbriendo(key)
     try {
       if (path) {
+        const cached = blobCacheRef.current.get(key)
+        if (cached?.sourceUrl === url) {
+          window.open(cached.objectUrl, '_blank')
+          return
+        }
+        if (cached && cached.sourceUrl !== url) {
+          URL.revokeObjectURL(cached.objectUrl)
+          blobCacheRef.current.delete(key)
+        }
         const fileRef = ref(storage, path)
         const blob = await getBlob(fileRef)
         const blobUrl = URL.createObjectURL(blob)
+        blobCacheRef.current.set(key, { sourceUrl: url, objectUrl: blobUrl })
         window.open(blobUrl, '_blank')
       } else {
         window.open(url, '_blank')

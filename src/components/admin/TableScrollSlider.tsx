@@ -59,6 +59,9 @@ export function TableScrollSlider({ scrollRef }: Props) {
       </svg>
       <input
         type="range"
+        id="table-horizontal-scroll"
+        name="table_horizontal_scroll"
+        aria-label="Desplazar tabla horizontalmente"
         min={0}
         max={maxScroll}
         value={value}
@@ -92,7 +95,6 @@ export function TableScrollSlider({ scrollRef }: Props) {
         style={{
           background: `linear-gradient(to right, #2563eb ${(value / maxScroll) * 100}%, #e2e8f0 ${(value / maxScroll) * 100}%)`,
         }}
-        aria-label="Desplazamiento horizontal de la tabla"
       />
       <svg xmlns="http://www.w3.org/2000/svg" className="h-3.5 w-3.5 text-slate-400 flex-shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
         <path strokeLinecap="round" strokeLinejoin="round" d="M9 5l7 7-7 7" />
