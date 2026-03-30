@@ -83,6 +83,10 @@ export interface PostulanteFirestore extends PostulanteData {
   documentosValidados?: Record<string, boolean>
   createdAt: string
   updatedAt: string
+  /** Metadatos al encolar correo SMTP de postulación exitosa (Cloud Function). */
+  emailPostulacionExitosaEncoladaAt?: string
+  emailPostulacionExitosaColaDocId?: string
+  emailPostulacionExitosaColaEstado?: 'encolado'
 }
 
 export interface UserRole {

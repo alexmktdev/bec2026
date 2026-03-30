@@ -50,6 +50,7 @@ function parsePort(raw: string): number {
 export const processMailQueue = onDocumentCreated(
   {
     document: 'mail/{mailId}',
+    region: 'southamerica-west1',
     timeoutSeconds: 60,
     memory: '256MiB',
     maxInstances: 10,

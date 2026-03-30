@@ -28,6 +28,7 @@ import { normalizeRut, rutTieneFormatoMinimo, validarRutMatematico } from '../..
 import { CrearPostulacionPayloadSchema } from '../../src/postulacion/shared/payloadValidation'
 import { webCallableBase } from './httpsCallableDefaults'
 import { enqueueRechazoEntradaMail } from './triggerEmailRechazoEntrada'
+import { enqueuePostulacionExitosaMail } from './triggerEmailPostulacionExitosa'
 
 if (!admin.apps.length) {
   admin.initializeApp()
@@ -311,6 +312,8 @@ export const crearPostulacion = onCall(
       console.error('crearPostulacion create error', e)
       throw new HttpsError('internal', 'No se pudo registrar la postulación. Intente nuevamente.')
     }
+
+    await enqueuePostulacionExitosaMail(db, postData, norm)
 
     return { postulanteId: norm }
   },
