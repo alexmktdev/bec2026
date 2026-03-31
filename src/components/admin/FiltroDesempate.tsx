@@ -12,6 +12,7 @@ import {
 import type { PostulanteFirestore } from '../../types/postulante'
 import { formatDate } from '../../utils/inputFormatters'
 import { resumenCuentaBancariaListado } from '../../utils/cuentaBancariaDisplay'
+import { ZipDownloadBriefNotice } from './ZipDownloadBriefNotice'
 
 // ── Lógica de ordenamiento por desempate ─────────────────────────────────────
 
@@ -93,7 +94,7 @@ export function FiltroDesempate() {
   const [criterioActivo, setCriterioActivo] = useState<CriterioDesempate | null>(null)
   const [guardandoCriterio, setGuardandoCriterio] = useState(false)
   const [quitandoCriterio, setQuitandoCriterio] = useState(false)
-  const [modalDescarga, setModalDescarga] = useState<'loading' | 'success' | null>(null)
+  const [avisoZipTick, setAvisoZipTick] = useState(0)
   const [exportando, setExportando] = useState<string | null>(null)
   const scrollRef = useRef<HTMLDivElement>(null)
 
@@ -180,15 +181,12 @@ export function FiltroDesempate() {
   }
 
   async function handleDescargarDocs() {
+    setAvisoZipTick((t) => t + 1)
     setExportando('zip')
-    setModalDescarga('loading')
     try {
       await descargarTodosDocumentos(listaOrdenada)
-      setModalDescarga('success')
-      setTimeout(() => setModalDescarga(null), 1500)
     } catch (err) {
       console.error('Error descargando documentos:', err)
-      setModalDescarga(null)
       alert('Error al descargar documentos.')
     } finally {
       setExportando(null)
@@ -207,11 +205,13 @@ export function FiltroDesempate() {
             <div>
               <h3 className="text-sm font-bold text-blue-900 uppercase tracking-tight">FILTRADO POR DESEMPATE</h3>
               <p className="mt-1 text-xs text-blue-800 leading-relaxed">
-                Esta sección muestra los postulantes que <strong>ya pasaron revisión de documentos</strong> y el{' '}
-                <strong>filtro por puntaje total</strong> vigente, ordenados según el criterio de desempate seleccionado.
-                El orden completo de desempate es: <strong>NEM → RSH → Condición médica → Hermanos/hijos → Fecha de postulación</strong>.
-                Al establecer un criterio, ese pasa a ser el primero en el orden de desempate y los demás siguen en secuencia.
-                Los primeros <strong>150 postulantes</strong> serían los beneficiarios de la beca.
+                Entran aquí <strong>todos</strong> los postulantes que cumplieron <strong>documentación validada</strong> y el{' '}
+                <strong>filtro por puntaje total</strong> vigente en el servidor — <strong>sin tope de cantidad</strong>{' '}
+                (pueden ser 200, 300, 400 o los que correspondan). La tabla muestra el <strong>ranking</strong>: primero por{' '}
+                <strong>puntaje total de mayor a menor</strong>; si hay empate en el total, se aplica la cadena de desempate
+                (por defecto <strong>NEM → RSH → Condición médica → Hermanos/hijos → Fecha de postulación</strong>). Al pulsar{' '}
+                <strong>Establecer criterio</strong>, el criterio elegido pasa a ser el primero en esa cadena y el orden se{' '}
+                <strong>vuelve a calcular</strong> sobre toda la nómina de esta etapa.
               </p>
             </div>
           </div>
@@ -342,7 +342,7 @@ export function FiltroDesempate() {
               </span>
               {listaOrdenada.length > 0 && (
                 <span className="rounded-full border border-blue-200 bg-blue-50 px-3 py-1 text-xs font-semibold text-blue-700">
-                  Top 150: posiciones 1–{Math.min(150, listaOrdenada.length)}
+                  Orden: puntaje total ↓, luego desempate
                 </span>
               )}
             </div>
@@ -359,17 +359,17 @@ export function FiltroDesempate() {
               </button>
               <button
                 onClick={handleExportExcel}
-                disabled={!!exportando || listaOrdenada.length === 0}
+                disabled={exportando === 'excel' || listaOrdenada.length === 0}
                 className="flex items-center gap-1.5 rounded-lg bg-green-700 px-3 py-2 text-xs font-semibold text-white shadow-sm hover:bg-green-800 disabled:opacity-50"
               >
                 {exportando === 'excel' ? 'Exportando...' : 'Exportar Excel'}
               </button>
               <button
                 onClick={handleDescargarDocs}
-                disabled={!!exportando || listaOrdenada.length === 0}
+                disabled={exportando === 'zip' || listaOrdenada.length === 0}
                 className="flex items-center gap-1.5 rounded-lg bg-blue-700 px-3 py-2 text-xs font-semibold text-white shadow-sm hover:bg-blue-800 disabled:opacity-50"
               >
-                {exportando === 'zip' ? 'Descargando...' : 'Descargar Documentación Completa'}
+                {exportando === 'zip' ? 'Preparando ZIP…' : 'Descargar Documentación Completa'}
               </button>
             </div>
           </div>
@@ -398,8 +398,10 @@ export function FiltroDesempate() {
                 <svg xmlns="http://www.w3.org/2000/svg" className="h-10 w-10 text-slate-300 mb-3" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}>
                   <path strokeLinecap="round" strokeLinejoin="round" d="M9 12h.01M12 12h.01M15 12h.01M21 12c0 4.418-4.03 8-9 8a9.863 9.863 0 01-4.255-.949L3 20l1.395-3.72C3.512 15.042 3 13.574 3 12c0-4.418 4.03-8 9-8s9 3.582 9 8z" />
                 </svg>
-                <p className="text-slate-600 font-medium">No hay postulantes con documentación validada aún.</p>
-                <p className="mt-1 text-sm text-slate-400">Complete el proceso de revisión de documentos en la pestaña correspondiente.</p>
+                <p className="text-slate-600 font-medium">No hay postulantes en esta etapa.</p>
+                <p className="mt-1 text-sm text-slate-400">
+                  Debe existir filtro de puntaje aplicado y postulantes con documentación validada que superen ese umbral.
+                </p>
               </div>
             ) : (
               <>
@@ -458,15 +460,10 @@ export function FiltroDesempate() {
                     <tbody>
                       {listaOrdenada.map((p, idx) => {
                         const pos = idx + 1
-                        const esBeneficiario = pos <= 150
                         return (
-                          <tr key={p.id} className={`group transition-colors ${esBeneficiario ? 'hover:bg-emerald-50/40' : 'hover:bg-slate-50'}`}>
-                            {/* # posición sticky */}
-                            <td className={`sticky left-0 z-10 border-r border-slate-200 px-2 py-2 text-center font-bold text-sm border-b border-slate-100 ${esBeneficiario ? 'bg-emerald-50 text-emerald-700' : 'bg-white text-slate-400'}`}>
+                          <tr key={p.id} className="group transition-colors hover:bg-slate-50">
+                            <td className="sticky left-0 z-10 border-r border-slate-200 bg-white px-2 py-2 text-center text-sm font-bold text-slate-700 border-b border-slate-100 group-hover:bg-slate-50">
                               {pos}
-                              {pos === 150 && (
-                                <div className="absolute bottom-0 left-0 right-0 h-0.5 bg-red-400" />
-                              )}
                             </td>
                             <td className={TD}>{p.nombres}</td>
                             <td className={TD}>{p.apellidoPaterno}</td>
@@ -511,44 +508,17 @@ export function FiltroDesempate() {
                   </table>
                 </div>
 
-                {/* Leyenda de colores */}
-                <div className="flex items-center gap-4 border-t border-slate-200 px-4 py-3">
-                  <div className="flex items-center gap-1.5">
-                    <div className="h-3 w-3 rounded-sm bg-emerald-100 border border-emerald-300" />
-                    <span className="text-[10px] text-slate-500">Posiciones 1–150 (beneficiarios)</span>
-                  </div>
-                  <div className="flex items-center gap-1.5">
-                    <div className="h-3 w-3 rounded-sm bg-white border border-slate-200" />
-                    <span className="text-[10px] text-slate-500">Posiciones 151+ (lista de espera)</span>
-                  </div>
+                <div className="border-t border-slate-200 px-4 py-3 text-[10px] text-slate-500">
+                  La columna # es el ranking definitivo de esta etapa: orden decreciente por puntaje total; empates resueltos
+                  con los criterios de desempate (pulse <strong className="text-slate-600">Establecer criterio</strong> para
+                  fijar cuál se evalúa primero entre quienes empatan en puntaje total).
                 </div>
               </>
             )}
           </div>
         </div>
 
-      {/* Modal de descarga */}
-      {modalDescarga && (
-        <div className="fixed inset-0 z-[100] flex items-center justify-center bg-black/30 backdrop-blur-sm">
-          <div className="flex flex-col items-center justify-center rounded-2xl bg-white px-10 py-8 shadow-2xl min-w-[200px]">
-            {modalDescarga === 'loading' ? (
-              <>
-                <div className="h-12 w-12 animate-spin rounded-full border-4 border-blue-200 border-t-blue-700 mb-4" />
-                <p className="text-base font-semibold text-slate-700">Cargando...</p>
-              </>
-            ) : (
-              <>
-                <div className="mb-4 flex h-14 w-14 items-center justify-center rounded-full bg-green-100 text-green-600">
-                  <svg xmlns="http://www.w3.org/2000/svg" className="h-8 w-8" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={3}>
-                    <path strokeLinecap="round" strokeLinejoin="round" d="M5 13l4 4L19 7" />
-                  </svg>
-                </div>
-                <p className="text-base font-semibold text-slate-800">¡Descarga iniciada!</p>
-              </>
-            )}
-          </div>
-        </div>
-      )}
+      <ZipDownloadBriefNotice tick={avisoZipTick} />
     </AdminLayout>
   )
 }

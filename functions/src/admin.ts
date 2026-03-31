@@ -1,4 +1,5 @@
 import './functionsInit'
+import { randomUUID } from 'node:crypto'
 import * as admin from 'firebase-admin'
 import { HttpsError, onCall } from 'firebase-functions/v2/https'
 import type {
@@ -14,6 +15,89 @@ import {
 } from './postulantesOrdenPanel'
 import { webCallableBase } from './httpsCallableDefaults'
 import { calcularPuntajeTotal } from '../../src/postulacion/shared/scoring'
+
+/** Lee `tramos` como array (nuevo) o como mapa por uid (legado). */
+function normalizeTramosConfigRaw(raw: unknown): TramoAsignacion[] {
+  if (Array.isArray(raw)) {
+    return raw as TramoAsignacion[]
+  }
+  if (raw && typeof raw === 'object') {
+    return Object.values(raw as Record<string, TramoAsignacion>)
+  }
+  return []
+}
+
+function segmentosNumericosSeSolapan(
+  a: { startRange: number; endRange: number },
+  b: { startRange: number; endRange: number },
+): boolean {
+  return (
+    (a.startRange >= b.startRange && a.startRange <= b.endRange) ||
+    (a.endRange >= b.startRange && a.endRange <= b.endRange) ||
+    (a.startRange <= b.startRange && a.endRange >= b.endRange)
+  )
+}
+
+/** Solo campos permitidos; rangos y uid validados. */
+function sanitizeTramoAssignment(raw: unknown, index: number): TramoAsignacion {
+  if (!raw || typeof raw !== 'object') {
+    throw new HttpsError('invalid-argument', `Segmento ${index + 1}: datos inválidos.`)
+  }
+  const o = raw as Record<string, unknown>
+  const reviewerUid =
+    typeof o.reviewerUid === 'string' && o.reviewerUid.length > 0 && o.reviewerUid.length < 200
+      ? o.reviewerUid
+      : ''
+  if (!reviewerUid) {
+    throw new HttpsError('invalid-argument', `Segmento ${index + 1}: reviewerUid inválido.`)
+  }
+
+  const reviewerEmail =
+    typeof o.reviewerEmail === 'string' && o.reviewerEmail.length < 320 ? o.reviewerEmail : ''
+  const reviewerName =
+    typeof o.reviewerName === 'string' && o.reviewerName.length < 500 ? o.reviewerName : ''
+
+  const startRange = typeof o.startRange === 'number' ? o.startRange : Number(o.startRange)
+  const endRange = typeof o.endRange === 'number' ? o.endRange : Number(o.endRange)
+  if (!Number.isInteger(startRange) || !Number.isInteger(endRange)) {
+    throw new HttpsError('invalid-argument', `Segmento ${index + 1}: los rangos deben ser números enteros.`)
+  }
+
+  let segmentId =
+    typeof o.segmentId === 'string' && /^[a-zA-Z0-9_.-]{8,128}$/.test(o.segmentId.trim())
+      ? o.segmentId.trim()
+      : ''
+  if (!segmentId) {
+    segmentId = randomUUID()
+  }
+
+  const assignedByUid =
+    typeof o.assignedByUid === 'string' ? o.assignedByUid.slice(0, 200) : ''
+  const assignedByEmail =
+    typeof o.assignedByEmail === 'string' ? o.assignedByEmail.slice(0, 320) : ''
+  const createdAt =
+    typeof o.createdAt === 'string' && o.createdAt.length < 48 ? o.createdAt : new Date().toISOString()
+
+  return {
+    segmentId,
+    reviewerUid,
+    reviewerEmail,
+    reviewerName,
+    startRange,
+    endRange,
+    assignedByUid,
+    assignedByEmail,
+    createdAt,
+  }
+}
+
+function conSegmentIdCompleto(t: TramoAsignacion): TramoAsignacion {
+  if (t.segmentId && t.segmentId.length >= 8) return t
+  return {
+    ...t,
+    segmentId: `legacy-${t.reviewerUid}-${t.startRange}-${t.endRange}`,
+  }
+}
 
 /** Campos que el panel puede enviar; nunca assignedTo, id, createdAt ni puntaje (se recalcula en servidor). */
 const POSTULANTE_UPDATE_KEYS = new Set<string>([
@@ -157,7 +241,7 @@ export const asignarTramosRevisores = onCall(
       // Limpiar todo: sin tramos en config y sin metadatos de asignación en postulantes.
       if (assignments.length === 0) {
         const configBatch = db.batch()
-        configBatch.set(configRef, { tramos: {}, updatedAt: new Date().toISOString() })
+        configBatch.set(configRef, { tramos: [], updatedAt: new Date().toISOString() })
 
         const snapshot = await db.collection('postulantes').get()
         let operations = 0
@@ -202,40 +286,29 @@ export const asignarTramosRevisores = onCall(
         return { ok: true }
       }
 
-      // 1. Guardar la configuración general (para la UI del SuperAdmin)
-      const tramosMap: Record<string, TramoAsignacion> = {}
-      const revisoresProcesados = new Set<string>()
+      const cleanAssignments = assignments.map((raw, i) => sanitizeTramoAssignment(raw, i))
 
-      for (const t of assignments) {
-        if (!t.reviewerUid || typeof t.startRange !== 'number' || typeof t.endRange !== 'number') {
-          throw new HttpsError('invalid-argument', 'Petición rechazada: estructura de datos manipulada o incompleta.')
-        }
+      for (const t of cleanAssignments) {
         if (t.startRange < 1 || t.startRange > t.endRange) {
           throw new HttpsError('invalid-argument', 'Petición rechazada: El rango es matemáticamente imposible.')
         }
-        if (revisoresProcesados.has(t.reviewerUid)) {
-          throw new HttpsError('already-exists', `El usuario ${t.reviewerEmail} tiene operaciones paralelas duplicadas enviadas.`)
+      }
+
+      for (let i = 0; i < cleanAssignments.length; i++) {
+        for (let j = i + 1; j < cleanAssignments.length; j++) {
+          const a = cleanAssignments[i]
+          const b = cleanAssignments[j]
+          if (segmentosNumericosSeSolapan(a, b)) {
+            throw new HttpsError(
+              'failed-precondition',
+              `Solapamiento entre segmentos (#${a.startRange}–${a.endRange} y #${b.startRange}–${b.endRange}). No puede haber dos tramos que compartan posiciones.`,
+            )
+          }
         }
-        revisoresProcesados.add(t.reviewerUid)
-
-        // Strict backend validation for overlapping segments bypassing UI
-        const overlapDetected = assignments.find(other =>
-          other !== t && (
-            (t.startRange >= other.startRange && t.startRange <= other.endRange) ||
-            (t.endRange >= other.startRange && t.endRange <= other.endRange) ||
-            (t.startRange <= other.startRange && t.endRange >= other.endRange)
-          )
-        )
-
-        if (overlapDetected) {
-          throw new HttpsError('failed-precondition', `El backend detectó solapamiento entre los rangos ${t.startRange}-${t.endRange} y el rango de otro revisor. Operación abortada atómicamente.`)
-        }
-
-        tramosMap[t.reviewerUid] = t
       }
 
       const configBatch = db.batch()
-      configBatch.set(configRef, { tramos: tramosMap, updatedAt: new Date().toISOString() })
+      configBatch.set(configRef, { tramos: cleanAssignments, updatedAt: new Date().toISOString() })
 
       const scopeIds = parseScopePostulanteIdsTramos(scopePostulanteIds)
       const scopeSnaps = await obtenerSnapshotsPostulantesPorIds(db, scopeIds)
@@ -251,7 +324,7 @@ export const asignarTramosRevisores = onCall(
       const sortedScope = ordenarDocsPostulantesComoEnPanel(scopeSnaps)
       const scopeLen = sortedScope.length
 
-      for (const t of assignments) {
+      for (const t of cleanAssignments) {
         if (t.startRange > scopeLen || t.endRange > scopeLen) {
           throw new HttpsError(
             'invalid-argument',
@@ -297,7 +370,7 @@ export const asignarTramosRevisores = onCall(
 
         const pos = idToPosition.get(doc.id)!
         const assignedTo =
-          assignments.find((t) => pos >= t.startRange && pos <= t.endRange)?.reviewerUid || null
+          cleanAssignments.find((t) => pos >= t.startRange && pos <= t.endRange)?.reviewerUid || null
 
         if (raw.assignedTo !== assignedTo || raw.ordenRevisionDoc !== pos) {
           batch.update(doc.ref, { assignedTo, ordenRevisionDoc: pos })
@@ -315,7 +388,7 @@ export const asignarTramosRevisores = onCall(
         adminEmail: request.auth?.token.email || 'unknown',
         action: 'ASIGNACION_TRAMOS_CREADA',
         targetUid: 'SISTEMA',
-        details: `Se asignaron tramos a ${assignments.length} revisores. Alcance: ${scopeLen} postulantes (vista revisión).`,
+        details: `Se guardaron ${cleanAssignments.length} segmento(s) de tramo. Alcance: ${scopeLen} postulantes (vista revisión).`,
         timestamp: new Date().toISOString(),
       } as AuditLog)
 
@@ -343,33 +416,35 @@ export const obtenerTramosRevisores = onCall(
         return { tramos: [] }
       }
       const data = docSnap.data()
-      const tramosArray = Object.values(data?.tramos || {}) as TramoAsignacion[]
-      if (tramosArray.length === 0) return { tramos: [] }
-
-      const reviewerUids = new Set(tramosArray.map((t) => t.reviewerUid))
-      const counters = new Map<string, { totalAsignados: number; totalTerminados: number }>()
-      for (const uid of reviewerUids) counters.set(uid, { totalAsignados: 0, totalTerminados: 0 })
+      const tramosRaw = normalizeTramosConfigRaw(data?.tramos).map(conSegmentIdCompleto)
+      if (tramosRaw.length === 0) return { tramos: [] }
 
       const snapshot = await db.collection('postulantes').get()
-      for (const doc of snapshot.docs) {
-        const raw = doc.data() as { assignedTo?: unknown; estado?: unknown }
-        const assignedTo = typeof raw.assignedTo === 'string' ? raw.assignedTo : ''
-        if (!assignedTo || !counters.has(assignedTo)) continue
-        const counter = counters.get(assignedTo)!
-        counter.totalAsignados += 1
-        const estado = String(raw.estado || '')
-        if (estado === 'documentacion_validada' || estado === 'rechazado') {
-          counter.totalTerminados += 1
-        }
-      }
 
-      const tramos = tramosArray.map((t) => {
-        const c = counters.get(t.reviewerUid) || { totalAsignados: 0, totalTerminados: 0 }
+      const tramos: TramoVigenteEstado[] = tramosRaw.map((t) => {
+        let totalAsignados = 0
+        let totalTerminados = 0
+        for (const doc of snapshot.docs) {
+          const raw = doc.data() as {
+            assignedTo?: unknown
+            estado?: unknown
+            ordenRevisionDoc?: unknown
+          }
+          const assignedTo = typeof raw.assignedTo === 'string' ? raw.assignedTo : ''
+          if (assignedTo !== t.reviewerUid) continue
+          const orden = Number(raw.ordenRevisionDoc)
+          if (!Number.isFinite(orden) || orden < t.startRange || orden > t.endRange) continue
+          totalAsignados += 1
+          const estado = String(raw.estado || '')
+          if (estado === 'documentacion_validada' || estado === 'rechazado') {
+            totalTerminados += 1
+          }
+        }
         return {
           ...t,
-          totalAsignados: c.totalAsignados,
-          totalTerminados: c.totalTerminados,
-          terminado: c.totalAsignados > 0 && c.totalTerminados >= c.totalAsignados,
+          totalAsignados,
+          totalTerminados,
+          terminado: totalAsignados > 0 && totalTerminados >= totalAsignados,
         } satisfies TramoVigenteEstado
       })
       return { tramos }

@@ -234,30 +234,67 @@ export function RevisionTable({
                   <td className="px-2 py-1.5 bg-blue-100 text-blue-900 whitespace-nowrap text-center font-black shadow-[inset_0_0_0_1px_rgba(30,64,175,0.1)]">{p.puntaje.total}</td>
                   <td className="px-2 py-1.5 text-slate-600 whitespace-nowrap font-semibold">{formatDateTime(p.createdAt)}</td>
                   <td className={`sticky right-0 z-10 bg-white px-3 py-1.5 text-center border-l border-slate-200 shadow-[-4px_0_8px_-2px_rgba(0,0,0,0.06)]`}>
-                    <div className="flex justify-center gap-1">
+                    <div className="flex flex-wrap justify-center gap-1">
                       {p.estado === 'rechazado' ? (
-                        <button
-                          type="button"
-                          onClick={() => onVerMotivo?.(p)}
-                          className="rounded bg-red-100 px-2 py-1 text-[9px] font-bold text-red-700 hover:bg-red-200 uppercase tracking-tighter"
-                        >
-                          Rechazado
-                        </button>
+                        <>
+                          <button
+                            type="button"
+                            onClick={() => onVerMotivo?.(p)}
+                            className="rounded bg-red-100 px-2 py-1 text-[9px] font-bold text-red-700 hover:bg-red-200 uppercase tracking-tighter"
+                          >
+                            Motivo
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() =>
+                              isAssigned
+                                ? onEvaluar?.(p)
+                                : alert(
+                                    'No tienes permisos para evaluar a este postulante porque no se encuentra en tu tramo de asignación.',
+                                  )
+                            }
+                            disabled={!isAssigned}
+                            title={
+                              !isAssigned
+                                ? 'No puedes editar porque no pertenece a tu tramo asignado'
+                                : 'Corregir validación o levantar el rechazo'
+                            }
+                            className={`rounded px-2 py-1 text-[9px] font-bold uppercase tracking-tighter whitespace-nowrap ${
+                              !isAssigned
+                                ? 'bg-slate-200 text-slate-400 cursor-not-allowed'
+                                : 'bg-amber-600 text-white hover:bg-amber-700'
+                            }`}
+                          >
+                            Editar
+                          </button>
+                        </>
                       ) : (
                         <button
                           type="button"
-                          onClick={() => isAssigned ? onEvaluar?.(p) : alert('No tienes permisos para evaluar a este postulante porque no se encuentra en tu tramo de asignación.')}
-                          disabled={(isFinalView && !isRechazadosView) || !isAssigned}
-                          title={!isAssigned ? "No puedes evaluar porque no pertenece a tu tramo asignado" : ""}
+                          onClick={() =>
+                            isAssigned
+                              ? onEvaluar?.(p)
+                              : alert(
+                                  'No tienes permisos para evaluar a este postulante porque no se encuentra en tu tramo de asignación.',
+                                )
+                          }
+                          disabled={!isAssigned}
+                          title={
+                            !isAssigned
+                              ? 'No puedes evaluar porque no pertenece a tu tramo asignado'
+                              : p.estado === 'documentacion_validada'
+                                ? 'Modificar la revisión de documentos'
+                                : undefined
+                          }
                           className={`rounded px-2 py-1 text-[9px] font-bold uppercase tracking-tighter whitespace-nowrap transition-colors ${
-                            !isAssigned 
+                            !isAssigned
                               ? 'bg-slate-200 text-slate-400 cursor-not-allowed'
                               : p.estado === 'documentacion_validada'
                                 ? 'bg-emerald-100 text-emerald-700 hover:bg-emerald-200'
                                 : 'bg-blue-800 text-white hover:bg-blue-700'
                           }`}
                         >
-                          {p.estado === 'documentacion_validada' ? 'Validado' : 'Evaluar'}
+                          {p.estado === 'documentacion_validada' ? 'Editar revisión' : 'Evaluar'}
                         </button>
                       )}
                     </div>

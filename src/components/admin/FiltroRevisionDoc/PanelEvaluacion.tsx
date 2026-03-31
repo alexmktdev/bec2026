@@ -19,7 +19,7 @@ type BlobCacheEntry = { sourceUrl: string; objectUrl: string }
 export function PanelEvaluacion({ postulante, onClose, onValidado, onActualizarPostulante }: PanelEvaluacionProps) {
   const [postulanteLocal, setPostulanteLocal] = useState<PostulanteFirestore>(postulante)
   const [validaciones, setValidaciones] = useState<Record<string, boolean>>(
-    () => postulante.documentosValidados ?? {},
+    () => ({ ...(postulante.documentosValidados ?? {}) }),
   )
   /** Evita un nuevo getBlob desde Storage en cada clic en «Abrir» del mismo documento (misma URL). */
   const blobCacheRef = useRef<Map<string, BlobCacheEntry>>(new Map())
@@ -48,6 +48,11 @@ export function PanelEvaluacion({ postulante, onClose, onValidado, onActualizarP
 
   useEffect(() => {
     clearBlobCache()
+  }, [postulante.id])
+
+  useEffect(() => {
+    setPostulanteLocal(postulante)
+    setValidaciones({ ...(postulante.documentosValidados ?? {}) })
   }, [postulante.id])
 
   const handleGuardadoEdicion = async (actualizado: PostulanteFirestore) => {
@@ -171,7 +176,7 @@ export function PanelEvaluacion({ postulante, onClose, onValidado, onActualizarP
                 Revisión exhaustiva de documentos
               </p>
               <p className="text-sm text-slate-600 mt-1">
-                Abra cada documento y valide que cumpla con lo requisitado. Marque como validado o rechace con su motivo si el documento no es válido.
+                Abra cada documento y valide que cumpla con lo requisitado. Marque como validado o rechace con su motivo si el documento no es válido. Si ya había guardado una decisión, puede corregirla aquí y volver a guardar.
               </p>
             </div>
 
@@ -275,7 +280,7 @@ export function PanelEvaluacion({ postulante, onClose, onValidado, onActualizarP
             )}
 
             <div className="flex items-center justify-between gap-2 pt-2">
-              {postulante.estado !== 'pendiente' && (
+              {postulanteLocal.estado !== 'pendiente' && (
                 <button
                   type="button"
                   onClick={handleRestablecer}

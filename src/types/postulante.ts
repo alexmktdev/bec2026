@@ -96,6 +96,8 @@ export interface UserRole {
 }
 
 export interface TramoAsignacion {
+  /** Clave estable del segmento (varios por mismo revisor permitidos). */
+  segmentId: string
   reviewerUid: string
   reviewerEmail: string
   reviewerName: string

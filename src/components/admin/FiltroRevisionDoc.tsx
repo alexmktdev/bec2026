@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { useAdminFilter } from '../../contexts/AdminFilterContext'
 import { actualizarDocumentosValidados } from '../../services/postulacionService'
-import type { PostulanteFirestore, TramoAsignacion } from '../../types/postulante'
+import type { PostulanteFirestore, TramoVigenteEstado } from '../../types/postulante'
 import { limpiarTodasLasAsignacionesTramos, obtenerTramos } from '../../services/tramosService'
 import { AdminLayout } from './AdminLayout'
 import { getFiltroRevisionDocConfig, setFiltroRevisionDocConfig } from '../../services/filtroConfigService'
@@ -44,7 +44,7 @@ export function FiltroRevisionDoc() {
   const [confirmandoAsignacionModal, setConfirmandoAsignacionModal] = useState(false)
   const [toastEvaluacion, setToastEvaluacion] = useState(false)
   const [verTramosLectura, setVerTramosLectura] = useState(false)
-  const [miTramoAsignado, setMiTramoAsignado] = useState<TramoAsignacion | null>(null)
+  const [misTramosAsignados, setMisTramosAsignados] = useState<TramoVigenteEstado[]>([])
   const [confirmandoLimpiarTramos, setConfirmandoLimpiarTramos] = useState(false)
   const [limpiandoTramos, setLimpiandoTramos] = useState(false)
   const [errorLimpiarTramos, setErrorLimpiarTramos] = useState<string | null>(null)
@@ -66,15 +66,14 @@ export function FiltroRevisionDoc() {
 
   useEffect(() => {
     if (!user?.uid || (roleAdmin !== 'revisor' && roleAdmin !== 'superadmin')) {
-      setMiTramoAsignado(null)
+      setMisTramosAsignados([])
       return
     }
     obtenerTramos()
       .then((tramos) => {
-        const mine = tramos.find((t) => t.reviewerUid === user.uid)
-        setMiTramoAsignado(mine ?? null)
+        setMisTramosAsignados(tramos.filter((t) => t.reviewerUid === user.uid))
       })
-      .catch(() => setMiTramoAsignado(null))
+      .catch(() => setMisTramosAsignados([]))
   }, [roleAdmin, user?.uid, huellaAssignedTo])
 
   const activarFiltroDoc = async (activo: boolean) => {
@@ -111,7 +110,7 @@ export function FiltroRevisionDoc() {
     let list = todosLosPostulantes
 
     // Revisor: solo postulantes de su tramo (assignedTo en Firestore, coherente con orden por createdAt en backend)
-    if (roleAdmin === 'revisor' && miTramoAsignado && user?.uid) {
+    if (roleAdmin === 'revisor' && misTramosAsignados.length > 0 && user?.uid) {
       list = list.filter((p) => p.assignedTo === user.uid)
     }
 
@@ -129,7 +128,7 @@ export function FiltroRevisionDoc() {
       )
     }
     return list
-  }, [todosLosPostulantes, busqueda, roleAdmin, verSoloMisAsignados, user?.uid, miTramoAsignado])
+  }, [todosLosPostulantes, busqueda, roleAdmin, verSoloMisAsignados, user?.uid, misTramosAsignados])
 
   const todosProcessados = useMemo(
     () =>
@@ -204,15 +203,32 @@ export function FiltroRevisionDoc() {
           </p>
         </div>
 
-        {miTramoAsignado &&
+        {roleAdmin === 'superadmin' && (
+          <div className="rounded-xl border border-emerald-200 bg-emerald-50/90 p-4 shadow-sm">
+            <p className="text-xs font-bold uppercase tracking-wide text-emerald-900">Superadmin: reparto de seguimiento</p>
+            <p className="mt-2 text-sm text-emerald-900 leading-relaxed">
+              Si un revisor ya terminó su tramo y aún hay postulantes por revisar (o sin tramo), puede{' '}
+              <strong>volver a usar «Asignar tramos»</strong> cuando quiera: el flujo es el mismo de siempre; no reemplaza ni
+              desactiva nada. Puede agregar tramos, editarlos o reasignar revisor desde el mismo modal. La guía breve está en{' '}
+              <strong>«Guía: reasignar o corregir errores»</strong> dentro del panel de asignación.
+            </p>
+          </div>
+        )}
+
+        {misTramosAsignados.length > 0 &&
           (roleAdmin === 'revisor' || (roleAdmin === 'superadmin' && verSoloMisAsignados)) && (
           <div className="rounded-xl border border-emerald-200 bg-emerald-50/80 p-4 shadow-sm">
             <p className="text-sm font-bold text-emerald-900">
-              {roleAdmin === 'superadmin' ? 'Su tramo (vista filtrada)' : 'Su tramo de revisión'}: posiciones{' '}
-              {miTramoAsignado.startRange} al {miTramoAsignado.endRange}
+              {roleAdmin === 'superadmin' ? 'Sus tramos (vista filtrada)' : 'Sus tramos de revisión'}:{' '}
+              {misTramosAsignados
+                .slice()
+                .sort((a, b) => a.startRange - b.startRange)
+                .map((t) => `#${t.startRange}–#${t.endRange}`)
+                .join(' · ')}
               <span className="font-semibold text-emerald-800">
                 {' '}
-                ({miTramoAsignado.endRange - miTramoAsignado.startRange + 1} cupos en la nómina)
+                (
+                {misTramosAsignados.reduce((acc, t) => acc + (t.endRange - t.startRange + 1), 0)} cupos en la nómina)
               </span>
             </p>
             <p className="mt-1 text-xs text-emerald-800">
@@ -365,7 +381,15 @@ export function FiltroRevisionDoc() {
         )}
       </div>
 
-      {evaluando && <PanelEvaluacion postulante={evaluando} onClose={() => setEvaluando(null)} onValidado={refrescarPostulantes} onActualizarPostulante={refrescarPostulantes} />}
+      {evaluando && (
+        <PanelEvaluacion
+          key={evaluando.id}
+          postulante={evaluando}
+          onClose={() => setEvaluando(null)}
+          onValidado={refrescarPostulantes}
+          onActualizarPostulante={refrescarPostulantes}
+        />
+      )}
       {verMotivo && <ModalMotivoRechazo postulante={verMotivo} onClose={() => setVerMotivo(null)} />}
       
       {modoAsignacion && (

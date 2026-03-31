@@ -72,6 +72,8 @@ export async function actualizarDocumentosValidados(
   await actualizarPostulante(id, {
     documentosValidados,
     estado: nuevoEstado,
+    // Al corregir una revisión previa (p. ej. salir de rechazado o ajustar validaciones), limpiar motivo.
+    motivoRechazo: null,
   })
 }
 

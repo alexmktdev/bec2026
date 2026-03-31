@@ -37,8 +37,11 @@ export function VerAsignacionesModal({ onClose }: Props) {
             <div className="text-center py-10 opacity-70 text-slate-500 font-medium">No hay tramos de revisión activos en este momento.</div>
           ) : (
             <ul className="space-y-3">
-              {asignaciones.map(a => (
-                <li key={a.reviewerUid} className="flex justify-between items-center bg-white border border-slate-200 p-4 rounded-xl shadow-sm hover:shadow-md transition-shadow">
+              {asignaciones.map((a) => (
+                <li
+                  key={a.segmentId || `${a.reviewerUid}-${a.startRange}-${a.endRange}`}
+                  className="flex justify-between items-center bg-white border border-slate-200 p-4 rounded-xl shadow-sm hover:shadow-md transition-shadow"
+                >
                   <div className="flex flex-col gap-1">
                     <span className="font-bold text-slate-800 text-base flex items-center gap-2">
                       {a.reviewerName}

@@ -8,6 +8,7 @@ import { PostulanteEdit } from './PostulanteEdit'
 import { resumenCuentaBancariaListado } from '../../utils/cuentaBancariaDisplay'
 import { TableScrollSlider } from './TableScrollSlider'
 import { TablePagination } from './TablePagination'
+import { ZipDownloadBriefNotice } from './ZipDownloadBriefNotice'
 
 const ITEMS_PER_PAGE = 10
 
@@ -48,7 +49,7 @@ export function PostulantesTable({ postulantes, onSelectPostulante, onEliminar, 
   const [busqueda, setBusqueda] = useState('')
   const [pagina, setPagina] = useState(1)
   const [descargandoZip, setDescargandoZip] = useState<string | null>(null)
-  const [modalDescarga, setModalDescarga] = useState<'loading' | 'success' | null>(null)
+  const [avisoZipTick, setAvisoZipTick] = useState(0)
   const [exportandoPdf, setExportandoPdf] = useState<string | null>(null)
   const [editando, setEditando] = useState<PostulanteFirestore | null>(null)
 
@@ -81,15 +82,12 @@ export function PostulantesTable({ postulantes, onSelectPostulante, onEliminar, 
 
   const handleDescargarDocs = async (p: PostulanteFirestore) => {
     if (!p.id) return
+    setAvisoZipTick((t) => t + 1)
     setDescargandoZip(p.id)
-    setModalDescarga('loading')
     try {
       await descargarDocumentosPostulante(p)
-      setModalDescarga('success')
-      setTimeout(() => setModalDescarga(null), 1500)
     } catch (err) {
       console.error('Error descargando documentos:', err)
-      setModalDescarga(null)
       alert('Error al descargar documentos.')
     } finally {
       setDescargandoZip(null)
@@ -270,7 +268,7 @@ export function PostulantesTable({ postulantes, onSelectPostulante, onEliminar, 
                       <button
                         type="button"
                         onClick={() => isAssigned ? handleDescargarDocs(p) : alert('No tienes permisos')}
-                        disabled={!!descargandoZip || !isAssigned}
+                        disabled={descargandoZip === p.id || !isAssigned}
                         title={!isAssigned ? "No asignado a ti" : "Descargar documentos (ZIP)"}
                         className={`inline-flex items-center justify-center rounded p-1 transition-colors ${
                           !isAssigned ? 'text-slate-300 cursor-not-allowed' : 'text-slate-500 hover:bg-blue-50 hover:text-blue-600 disabled:opacity-50'
@@ -366,28 +364,7 @@ export function PostulantesTable({ postulantes, onSelectPostulante, onEliminar, 
         />
       )}
 
-      {/* Modal de descarga individual */}
-      {modalDescarga && (
-        <div className="fixed inset-0 z-[100] flex items-center justify-center bg-black/30 backdrop-blur-sm">
-          <div className="flex flex-col items-center justify-center rounded-2xl bg-white px-10 py-8 shadow-2xl min-w-[200px]">
-            {modalDescarga === 'loading' ? (
-              <>
-                <div className="h-12 w-12 animate-spin rounded-full border-4 border-blue-200 border-t-blue-700 mb-4" />
-                <p className="text-base font-semibold text-slate-700">Cargando...</p>
-              </>
-            ) : (
-              <>
-                <div className="mb-4 flex h-14 w-14 items-center justify-center rounded-full bg-green-100 text-green-600">
-                  <svg xmlns="http://www.w3.org/2000/svg" className="h-8 w-8" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={3}>
-                    <path strokeLinecap="round" strokeLinejoin="round" d="M5 13l4 4L19 7" />
-                  </svg>
-                </div>
-                <p className="text-base font-semibold text-slate-800">¡Descarga iniciada!</p>
-              </>
-            )}
-          </div>
-        </div>
-      )}
+      <ZipDownloadBriefNotice tick={avisoZipTick} />
     </div>
   )
 }

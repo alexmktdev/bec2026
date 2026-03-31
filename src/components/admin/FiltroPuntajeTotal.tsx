@@ -8,9 +8,15 @@ import { AdminLayout } from './AdminLayout'
 import { exportarExcel } from '../../services/excelExport'
 import { descargarTodosDocumentos } from '../../services/zipDownload'
 import { useAuth } from '../../hooks/useAuth'
+import { ZipDownloadBriefNotice } from './ZipDownloadBriefNotice'
 
 function puntajeLabel(p: number) {
   return `>=${p} puntos`
+}
+
+/** Postulantes con documentación validada (entrada desde revisión de documentos), listados para el umbral de puntaje. */
+function ordenarPorPuntajeTotalDesc(lista: PostulanteFirestore[]): PostulanteFirestore[] {
+  return [...lista].sort((a, b) => (b.puntaje?.total ?? 0) - (a.puntaje?.total ?? 0))
 }
 
 export function FiltroPuntajeTotal() {
@@ -30,7 +36,7 @@ export function FiltroPuntajeTotal() {
   } = useAdminFilter()
   const [selected, setSelected] = useState<PostulanteFirestore | null>(null)
   const [exportando, setExportando] = useState<string | null>(null)
-  const [modalDescarga, setModalDescarga] = useState<'loading' | 'success' | null>(null)
+  const [avisoZipTick, setAvisoZipTick] = useState(0)
 
   const [puntajeSeleccionado, setPuntajeSeleccionado] = useState<number>(30)
 
@@ -57,10 +63,12 @@ export function FiltroPuntajeTotal() {
     [postulantes],
   )
 
-  const tablaLista = useMemo(
-    () => (puntajeAplicado == null ? postulantesElegiblesPuntaje : postulantesFiltrados),
-    [puntajeAplicado, postulantesElegiblesPuntaje, postulantesFiltrados],
-  )
+  /** Siempre orden mayor → menor puntaje total (misma nómina que viene de revisión de documentos). */
+  const tablaLista = useMemo(() => {
+    const base =
+      puntajeAplicado == null ? postulantesElegiblesPuntaje : postulantesFiltrados
+    return ordenarPorPuntajeTotalDesc(base)
+  }, [puntajeAplicado, postulantesElegiblesPuntaje, postulantesFiltrados])
 
   async function handleFiltrarPuntaje() {
     if (!canManageFiltroPuntaje) return
@@ -94,15 +102,12 @@ export function FiltroPuntajeTotal() {
   }
 
   async function handleDescargarDocsFiltrados() {
+    setAvisoZipTick((t) => t + 1)
     setExportando('zip')
-    setModalDescarga('loading')
     try {
       await descargarTodosDocumentos(tablaLista)
-      setModalDescarga('success')
-      setTimeout(() => setModalDescarga(null), 1500)
     } catch (err) {
       console.error('Error descargando documentación filtrada:', err)
-      setModalDescarga(null)
       alert('Error al descargar documentos.')
     } finally {
       setExportando(null)
@@ -116,8 +121,9 @@ export function FiltroPuntajeTotal() {
           <div className="rounded-xl border border-slate-200 bg-white p-4">
             <div className="mb-3 rounded-lg border border-blue-200 bg-blue-50/80 p-3 text-xs text-blue-900 leading-relaxed">
               <strong>Orden del proceso:</strong> primero se revisa la documentación de todos los postulantes ingresados;
-              solo quienes queden con estado <strong>documentación validada</strong> entran aquí. Al aplicar el filtro, el
-              servidor registra el umbral y la lista resultante alimenta la etapa de <strong>filtrado por desempate</strong>.
+              solo quienes queden con estado <strong>documentación validada</strong> entran aquí. La tabla se muestra ordenada
+              por <strong>puntaje total de mayor a menor</strong>. Al aplicar el filtro, el servidor registra el umbral y la
+              lista resultante alimenta la etapa de <strong>filtrado por desempate</strong>.
             </div>
             <h2 className="text-sm font-bold uppercase text-slate-700 mb-2">
               Cómo se calcula el puntaje total
@@ -217,7 +223,7 @@ export function FiltroPuntajeTotal() {
             <button
               type="button"
               onClick={refrescarPostulantes}
-              disabled={loading || !!exportando}
+              disabled={loading}
               className="flex items-center gap-1.5 rounded-lg border border-slate-300 bg-white px-3 py-2 text-xs font-semibold text-slate-700 shadow-sm hover:bg-slate-50 disabled:opacity-50"
             >
               <svg xmlns="http://www.w3.org/2000/svg" className={`h-4 w-4 ${loading ? 'animate-spin' : ''}`} fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
@@ -232,7 +238,7 @@ export function FiltroPuntajeTotal() {
                 onClick={() => {
                   void clearFiltro().catch(() => alert('No se pudo quitar el filtro.'))
                 }}
-                disabled={!!exportando}
+                disabled={exportando === 'excel'}
                 className="flex items-center gap-1.5 rounded-lg border border-slate-300 bg-white px-3 py-2 text-xs font-semibold text-slate-700 shadow-sm hover:bg-slate-50 disabled:opacity-50"
               >
                 Quitar filtro
@@ -242,7 +248,7 @@ export function FiltroPuntajeTotal() {
             <button
               type="button"
               onClick={handleExportExcelFiltrado}
-              disabled={!!exportando}
+              disabled={exportando === 'excel'}
               className="flex items-center gap-1.5 rounded-lg bg-green-700 px-3 py-2 text-xs font-semibold text-white shadow-sm hover:bg-green-800 disabled:opacity-50"
             >
               {exportando === 'excel' ? 'Exportando...' : 'Exportar Excel Completo'}
@@ -251,10 +257,10 @@ export function FiltroPuntajeTotal() {
             <button
               type="button"
               onClick={handleDescargarDocsFiltrados}
-              disabled={!!exportando}
+              disabled={exportando === 'zip'}
               className="flex items-center gap-1.5 rounded-lg bg-blue-700 px-3 py-2 text-xs font-semibold text-white shadow-sm hover:bg-blue-800 disabled:opacity-50"
             >
-              {exportando === 'zip' ? 'Descargando...' : 'Descargar Documentación Completa'}
+              {exportando === 'zip' ? 'Preparando ZIP…' : 'Descargar Documentación Completa'}
             </button>
           </div>
 
@@ -308,28 +314,7 @@ export function FiltroPuntajeTotal() {
 
       {selected && <PostulanteDetail postulante={selected} onClose={() => setSelected(null)} />}
 
-      {/* Modal de descarga */}
-      {modalDescarga && (
-        <div className="fixed inset-0 z-[100] flex items-center justify-center bg-black/30 backdrop-blur-sm">
-          <div className="flex flex-col items-center justify-center rounded-2xl bg-white px-10 py-8 shadow-2xl min-w-[200px]">
-            {modalDescarga === 'loading' ? (
-              <>
-                <div className="h-12 w-12 animate-spin rounded-full border-4 border-blue-200 border-t-blue-700 mb-4" />
-                <p className="text-base font-semibold text-slate-700">Cargando...</p>
-              </>
-            ) : (
-              <>
-                <div className="mb-4 flex h-14 w-14 items-center justify-center rounded-full bg-green-100 text-green-600">
-                  <svg xmlns="http://www.w3.org/2000/svg" className="h-8 w-8" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={3}>
-                    <path strokeLinecap="round" strokeLinejoin="round" d="M5 13l4 4L19 7" />
-                  </svg>
-                </div>
-                <p className="text-base font-semibold text-slate-800">¡Descarga iniciada!</p>
-              </>
-            )}
-          </div>
-        </div>
-      )}
+      <ZipDownloadBriefNotice tick={avisoZipTick} />
 
       {/* Modal de éxito centrado */}
       {mostrarModalOk && (
