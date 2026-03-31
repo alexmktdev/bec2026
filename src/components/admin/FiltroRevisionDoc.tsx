@@ -23,13 +23,11 @@ export function FiltroRevisionDoc() {
   const { user, userRole } = useAuth()
   const roleAdmin = userRole?.role
 
-  const { 
-    postulantes: todosLosPostulantes, 
-    postulantesFiltrados: postulantesDelContexto, 
-    puntajeAplicado, 
-    loading: loadingFiltro, 
-    errorPostulantes, 
-    refrescarPostulantes 
+  const {
+    postulantes: todosLosPostulantes,
+    loading: loadingFiltro,
+    errorPostulantes,
+    refrescarPostulantes,
   } = useAdminFilter()
 
   const [evaluando, setEvaluando] = useState<PostulanteFirestore | null>(null)
@@ -110,7 +108,7 @@ export function FiltroRevisionDoc() {
   }
 
   const postulantesFiltrados = useMemo(() => {
-    let list = postulantesDelContexto
+    let list = todosLosPostulantes
 
     // Revisor: solo postulantes de su tramo (assignedTo en Firestore, coherente con orden por createdAt en backend)
     if (roleAdmin === 'revisor' && miTramoAsignado && user?.uid) {
@@ -131,22 +129,23 @@ export function FiltroRevisionDoc() {
       )
     }
     return list
-  }, [postulantesDelContexto, busqueda, roleAdmin, verSoloMisAsignados, user?.uid, miTramoAsignado])
+  }, [todosLosPostulantes, busqueda, roleAdmin, verSoloMisAsignados, user?.uid, miTramoAsignado])
 
-  const todosProcessados = useMemo(() => 
-    postulantesDelContexto.length > 0 && 
-    postulantesDelContexto.every(p => p.estado === 'documentacion_validada' || p.estado === 'rechazado'),
-    [postulantesDelContexto]
+  const todosProcessados = useMemo(
+    () =>
+      todosLosPostulantes.length > 0 &&
+      todosLosPostulantes.every((p) => p.estado === 'documentacion_validada' || p.estado === 'rechazado'),
+    [todosLosPostulantes],
   )
 
-  const validadosFinal = useMemo(() => 
-    postulantesDelContexto.filter(p => p.estado === 'documentacion_validada'), 
-    [postulantesDelContexto]
+  const validadosFinal = useMemo(
+    () => todosLosPostulantes.filter((p) => p.estado === 'documentacion_validada'),
+    [todosLosPostulantes],
   )
 
-  const rechazadosFinal = useMemo(() => 
-    postulantesDelContexto.filter(p => p.estado === 'rechazado'), 
-    [postulantesDelContexto]
+  const rechazadosFinal = useMemo(
+    () => todosLosPostulantes.filter((p) => p.estado === 'rechazado'),
+    [todosLosPostulantes],
   )
 
   const paginaRevisionItems = useMemo(() => {
@@ -195,13 +194,13 @@ export function FiltroRevisionDoc() {
 
         <div className="rounded-xl border border-blue-200 bg-blue-50/50 p-4">
           <p className="text-sm text-blue-800 leading-relaxed">
-            Sección de revisión exhaustiva basada en el filtro de {puntajeAplicado != null ? `puntaje ≥ ${puntajeAplicado}` : 'sin filtro'}.
+            Esta es la <strong>primera etapa</strong> del panel: la nómina corresponde a <strong>todos los postulantes ingresados</strong>{' '}
+            (pre-aprobados en plataforma), sin filtro previo por puntaje. En la primera columna verá el estado:{' '}
+            <strong className="text-amber-900">validación incompleta / en proceso</strong> si faltan documentos,{' '}
+            <strong className="text-emerald-900">validado</strong> cuando la documentación esté completa. Quienes queden validados
+            pasarán a la etapa <strong>Filtrar por puntaje total</strong> y, después, a <strong>Filtrado por desempate</strong>.
             {' '}
-            En la primera columna de la tabla verás el estado de cada postulante:{' '}
-            <strong className="text-amber-900">validación incompleta / en proceso</strong> si faltan documentos por validar,{' '}
-            <strong className="text-emerald-900">validado</strong> cuando la documentación esté completa (luego podrás activar el filtro final para desempate).
-            {' '}
-            Aplica tanto si hay tramos asignados como si el superadmin revisa directamente.
+            Aplica tanto con tramos asignados como si el superadmin revisa directamente.
           </p>
         </div>
 
@@ -292,11 +291,9 @@ export function FiltroRevisionDoc() {
                 </button>
                 <button
                   type="button"
-                  disabled={postulantesDelContexto.length === 0}
+                  disabled={todosLosPostulantes.length === 0}
                   title={
-                    postulantesDelContexto.length === 0
-                      ? 'Defina primero el filtro de puntaje en «Filtro puntaje total» para tener postulantes en esta vista'
-                      : undefined
+                    todosLosPostulantes.length === 0 ? 'No hay postulantes en la nómina' : undefined
                   }
                   onClick={confirmarAsignacionTramos}
                   className="bg-blue-600 text-white px-3 py-1.5 rounded-lg text-sm font-bold flex items-center gap-2 hover:bg-blue-700 transition-colors shadow-sm disabled:opacity-50 disabled:cursor-not-allowed"
@@ -340,7 +337,9 @@ export function FiltroRevisionDoc() {
           <div className="space-y-4">
             {errorPostulantes ? <div className="p-4 bg-red-50 text-red-800 rounded-xl">{errorPostulantes}</div> : 
              loadingFiltro ? <div className="text-center py-20">Cargando...</div> :
-             postulantesDelContexto.length === 0 ? <div className="text-center py-10 opacity-50">No hay postulantes bajo el filtro actual.</div> :
+             todosLosPostulantes.length === 0 ? (
+               <div className="text-center py-10 opacity-50">No hay postulantes en la nómina.</div>
+             ) :
              <>
                <RevisionTable 
                  postulantes={paginaRevisionItems} 
@@ -352,7 +351,11 @@ export function FiltroRevisionDoc() {
                <TableScrollSlider scrollRef={scrollRef} />
                {!todosProcessados && (
                   <div className="text-xs text-slate-500 bg-slate-50 p-3 rounded-lg border border-slate-200">
-                    Faltan por procesar: <span className="text-amber-700 font-bold">{postulantesDelContexto.filter(p => p.estado === 'pendiente' || p.estado === 'en_revision').length}</span> postulantes.
+                    Faltan por procesar:{' '}
+                    <span className="text-amber-700 font-bold">
+                      {todosLosPostulantes.filter((p) => p.estado === 'pendiente' || p.estado === 'en_revision').length}
+                    </span>{' '}
+                    postulantes.
                   </div>
                )}
                <TablePagination totalItems={postulantesFiltrados.length} itemsPerPage={ITEMS_PER_PAGE} currentPage={paginaRevision} onPageChange={setPaginaRevision} />
@@ -369,7 +372,7 @@ export function FiltroRevisionDoc() {
         <AsignacionRevisoresModal
           onClose={() => { setModoAsignacion(false); void refrescarPostulantes() }}
           onTramosActualizados={() => { void refrescarPostulantes() }}
-          postulantesEnVistaRevision={postulantesDelContexto}
+          postulantesEnVistaRevision={todosLosPostulantes}
         />
       )}
 

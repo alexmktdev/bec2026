@@ -76,17 +76,26 @@ export function CuentaBancaria() {
 
         <div className="rounded-xl border border-amber-200 bg-amber-50 p-5 shadow-sm">
           <div className="flex gap-4">
-            <div className="shrink-0 flex items-center justify-center h-10 w-10 rounded-full bg-amber-100 text-amber-700">
-              <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={2.5} stroke="currentColor" className="w-6 h-6">
+            <div className="shrink-0 flex h-10 w-10 items-center justify-center rounded-full bg-amber-100 text-amber-700">
+              <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={2.5} stroke="currentColor" className="h-6 w-6">
                 <path strokeLinecap="round" strokeLinejoin="round" d="M12 9v3.75m9-.75a9 9 0 1 1-18 0 9 9 0 0 1 18 0Zm-9 3.75h.008v.008H12v-.008Z" />
               </svg>
             </div>
-            <div>
-              <h3 className="text-sm font-bold text-amber-900 mb-1 uppercase tracking-tight">Idealmente cuenta RUT</h3>
-              <p className="text-sm text-amber-800 leading-relaxed">
-                Se prefiere una cuenta RUT (por ejemplo de Banco Estado). Si no dispone de ella, puede indicar otra cuenta
-                bancaria completando el segundo bloque: tipo de cuenta, banco y RUT del titular.
-              </p>
+            <div className="min-w-0 flex-1">
+              <h3 className="text-sm font-bold text-amber-900 mb-2 uppercase tracking-tight text-left">
+                Idealmente cuenta RUT
+              </h3>
+              <div className="space-y-3 text-sm leading-relaxed text-amber-800 text-justify hyphens-auto">
+                <p className="font-semibold text-amber-900">
+                  La cuenta RUT u otra cuenta que indique en esta sección debe ser <strong>sí o sí</strong> del{' '}
+                  <strong>postulante</strong> (titular de esta postulación), no de un familiar, apoderado ni tercero.
+                </p>
+                <p>
+                  Se prefiere una cuenta RUT (por ejemplo de Banco Estado). Si no dispone de ella, puede indicar otra cuenta
+                  bancaria completando el segundo bloque: tipo de cuenta, banco y RUT del titular, siempre que ese titular sea
+                  usted mismo/a.
+                </p>
+              </div>
             </div>
           </div>
         </div>

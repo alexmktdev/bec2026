@@ -5,8 +5,8 @@ import { useNavigate, useLocation } from 'react-router-dom'
 const navItems = [
   { path: '/admin', label: 'Panel de control', paths: ['M3 9l9-7 9 7v10a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V9z', 'M9 22V12h6v10'] },
   { path: '/admin/filtro-inicial', label: 'Filtrado inicial', paths: ['M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z'] },
-  { path: '/admin/filtro-puntaje-total', label: 'Filtrar por puntaje total', paths: ['M3 4h18l-7 9v6l-4 2v-8L3 4z'] },
   { path: '/admin/filtro-revision-doc', label: 'Revisión de documentos', paths: ['M9 12h.01M12 12h.01M15 12h.01M21 12c0 4.418-4.03 8-9 8a9.863 9.863 0 01-4.255-.949L3 20l1.395-3.72C3.512 15.042 3 13.574 3 12c0-4.418 4.03-8 9-8s9 3.582 9 8z'] },
+  { path: '/admin/filtro-puntaje-total', label: 'Filtrar por puntaje total', paths: ['M3 4h18l-7 9v6l-4 2v-8L3 4z'] },
   { path: '/admin/filtro-desempate', label: 'Filtrado por desempate', paths: ['M8 7h12m0 0l-4-4m4 4l-4 4m0 6H4m0 0l4 4m-4-4l4-4'] },
   { path: '/admin/postulantes-rechazados-entrada', label: 'Postulantes rechazados de entrada', paths: ['M12 9v2m0 4h.01M5.07 19h13.86c1.54 0 2.5-1.67 1.73-3L13.73 4c-.77-1.33-2.69-1.33-3.46 0L3.34 16c-.77 1.33.19 3 1.73 3z'] },
 ] as const

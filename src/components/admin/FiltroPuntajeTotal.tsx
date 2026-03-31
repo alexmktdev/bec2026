@@ -16,7 +16,18 @@ function puntajeLabel(p: number) {
 export function FiltroPuntajeTotal() {
   const { userRole } = useAuth()
   const canManageFiltroPuntaje = userRole?.role === 'superadmin'
-  const { postulantes, loading, errorPostulantes, puntajeAplicado, setFiltroPuntaje, clearFiltro, refrescarPostulantes, actualizarPostulanteLocal, eliminarPostulanteLocal } = useAdminFilter()
+  const {
+    postulantes,
+    postulantesFiltrados,
+    loading,
+    errorPostulantes,
+    puntajeAplicado,
+    setFiltroPuntaje,
+    clearFiltro,
+    refrescarPostulantes,
+    actualizarPostulanteLocal,
+    eliminarPostulanteLocal,
+  } = useAdminFilter()
   const [selected, setSelected] = useState<PostulanteFirestore | null>(null)
   const [exportando, setExportando] = useState<string | null>(null)
   const [modalDescarga, setModalDescarga] = useState<'loading' | 'success' | null>(null)
@@ -40,26 +51,40 @@ export function FiltroPuntajeTotal() {
     }
   }
 
+  /** Solo quienes ya pasaron revisión de documentos (estado en servidor). */
+  const postulantesElegiblesPuntaje = useMemo(
+    () => postulantes.filter((p) => p.estado === 'documentacion_validada'),
+    [postulantes],
+  )
+
+  const tablaLista = useMemo(
+    () => (puntajeAplicado == null ? postulantesElegiblesPuntaje : postulantesFiltrados),
+    [puntajeAplicado, postulantesElegiblesPuntaje, postulantesFiltrados],
+  )
+
   async function handleFiltrarPuntaje() {
     if (!canManageFiltroPuntaje) return
     if (filtrandoPuntaje) return
+    if (postulantesElegiblesPuntaje.length === 0) {
+      alert('No hay postulantes con documentación validada. Complete primero la revisión de documentos.')
+      return
+    }
     setFiltrandoPuntaje(true)
-    const filtrados = postulantes.filter((p) => p.puntaje.total >= puntajeSeleccionado)
-    await setFiltroPuntaje(puntajeSeleccionado, filtrados)
-    setFiltrandoPuntaje(false)
-    setMostrarModalOk(true)
-    window.setTimeout(() => setMostrarModalOk(false), 2500)
+    try {
+      await setFiltroPuntaje(puntajeSeleccionado)
+      setMostrarModalOk(true)
+      window.setTimeout(() => setMostrarModalOk(false), 2500)
+    } catch {
+      alert('No se pudo aplicar el filtro. Verifique permisos (superadmin) y conexión.')
+    } finally {
+      setFiltrandoPuntaje(false)
+    }
   }
-
-  const postulantesFiltrados = useMemo(() => {
-    if (puntajeAplicado == null) return postulantes
-    return postulantes.filter((p) => p.puntaje.total >= puntajeAplicado)
-  }, [postulantes, puntajeAplicado])
 
   async function handleExportExcelFiltrado() {
     setExportando('excel')
     try {
-      await exportarExcel(postulantesFiltrados)
+      await exportarExcel(tablaLista)
     } catch (err) {
       console.error('Error exportando Excel filtrado:', err)
       alert('Error al exportar Excel.')
@@ -72,7 +97,7 @@ export function FiltroPuntajeTotal() {
     setExportando('zip')
     setModalDescarga('loading')
     try {
-      await descargarTodosDocumentos(postulantesFiltrados)
+      await descargarTodosDocumentos(tablaLista)
       setModalDescarga('success')
       setTimeout(() => setModalDescarga(null), 1500)
     } catch (err) {
@@ -89,6 +114,11 @@ export function FiltroPuntajeTotal() {
         <div className="flex-1 w-full px-4 py-8 sm:px-6 lg:px-8 space-y-6 max-w-[1600px] mx-auto">
           {/* Explicación */}
           <div className="rounded-xl border border-slate-200 bg-white p-4">
+            <div className="mb-3 rounded-lg border border-blue-200 bg-blue-50/80 p-3 text-xs text-blue-900 leading-relaxed">
+              <strong>Orden del proceso:</strong> primero se revisa la documentación de todos los postulantes ingresados;
+              solo quienes queden con estado <strong>documentación validada</strong> entran aquí. Al aplicar el filtro, el
+              servidor registra el umbral y la lista resultante alimenta la etapa de <strong>filtrado por desempate</strong>.
+            </div>
             <h2 className="text-sm font-bold uppercase text-slate-700 mb-2">
               Cómo se calcula el puntaje total
             </h2>
@@ -128,7 +158,7 @@ export function FiltroPuntajeTotal() {
                 Puntaje total = NEM + RSH + Enfermedad + Hermanos/Hijos (máximo 100 pts).
               </p>
               <p className="text-xs text-blue-700 mt-2 font-medium">
-                El filtro aplicado se guarda automáticamente y persiste al cerrar sesión o recargar.
+                El umbral se guarda en el servidor (solo superadmin puede aplicarlo o quitarlo) y persiste al recargar.
               </p>
             </div>
           </div>
@@ -155,7 +185,12 @@ export function FiltroPuntajeTotal() {
             <button
               type="button"
               onClick={handleFiltrarPuntaje}
-              disabled={filtrandoPuntaje || loading || !canManageFiltroPuntaje}
+              disabled={
+                filtrandoPuntaje ||
+                loading ||
+                !canManageFiltroPuntaje ||
+                postulantesElegiblesPuntaje.length === 0
+              }
               className="flex items-center justify-center gap-2 rounded-xl bg-red-700 px-8 py-4 text-sm font-semibold text-white shadow-sm hover:bg-red-800 disabled:opacity-50"
             >
               {filtrandoPuntaje ? (
@@ -194,7 +229,9 @@ export function FiltroPuntajeTotal() {
             {canManageFiltroPuntaje && puntajeAplicado != null && (
               <button
                 type="button"
-                onClick={() => clearFiltro()}
+                onClick={() => {
+                  void clearFiltro().catch(() => alert('No se pudo quitar el filtro.'))
+                }}
                 disabled={!!exportando}
                 className="flex items-center gap-1.5 rounded-lg border border-slate-300 bg-white px-3 py-2 text-xs font-semibold text-slate-700 shadow-sm hover:bg-slate-50 disabled:opacity-50"
               >
@@ -231,7 +268,7 @@ export function FiltroPuntajeTotal() {
             <div>
               <p className="text-xs font-bold uppercase tracking-widest text-blue-900">Total en esta etapa</p>
               <p className="text-2xl font-black text-blue-800 tracking-tight leading-none mt-1">
-                {postulantesFiltrados.length} <span className="text-base font-semibold text-blue-600 tracking-normal">postulantes</span>
+                {tablaLista.length} <span className="text-base font-semibold text-blue-600 tracking-normal">postulantes</span>
               </p>
             </div>
           </div>
@@ -260,7 +297,7 @@ export function FiltroPuntajeTotal() {
               </div>
             ) : (
               <PostulantesTable
-                postulantes={postulantesFiltrados}
+                postulantes={tablaLista}
                 onSelectPostulante={setSelected}
                 onEliminar={handleEliminar}
                 onActualizar={actualizarPostulanteLocal}

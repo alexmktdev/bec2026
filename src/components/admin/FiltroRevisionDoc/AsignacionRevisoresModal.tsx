@@ -4,7 +4,7 @@ import { obtenerTramos, asignarTramos, limpiarTodasLasAsignacionesTramos } from 
 
 interface Props {
   onClose: () => void
-  /** Misma lista y orden que la tabla de «Revisión de documentación» (p. ej. filtro por puntaje). */
+  /** Nómina completa de postulantes en plataforma (mismo orden que la tabla de revisión de documentación). */
   postulantesEnVistaRevision: PostulanteFirestore[]
   /** Tras guardar o limpiar tramos, para refrescar la nómina sin cerrar el modal. */
   onTramosActualizados?: () => void

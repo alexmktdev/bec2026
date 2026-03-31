@@ -17,7 +17,7 @@ const REQUISITOS_EXCLUYENTES = [
   'No ser hijo/a de funcionario/a municipal, bajo ningún estatuto de contratación.',
   'El/la postulante debe figurar como integrante del grupo familiar en la cartola del RSH (si no figura, la postulación es inadmisible).',
   'La beca solo puede obtenerse una vez en la vida — quien ya la recibió no puede volver a postular.',
-  'Presentar la postulación dentro del mes de abril en el plazo indicado.',
+  'Presentar la postulación entre el 13 y el 17 de abril de 2026.',
 ]
 
 const DOCUMENTOS = [
@@ -158,6 +158,34 @@ export function InformacionBeca() {
                 <path strokeLinecap="round" strokeLinejoin="round" d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z" />
               </svg>
               Período de postulación: 13 al 17 de abril de 2026
+            </div>
+          </div>
+        </div>
+
+        {/* Aviso crítico: documentación obligatoria antes de postular */}
+        <div
+          role="alert"
+          aria-live="polite"
+          className="rounded-xl border-2 border-red-600 bg-red-50/90 p-4 shadow-sm ring-2 ring-red-100 sm:p-4"
+        >
+          <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:gap-4">
+            <div className="flex shrink-0 justify-center sm:justify-start">
+              <div className="flex h-11 w-11 items-center justify-center rounded-lg bg-red-600 text-white sm:h-12 sm:w-12">
+                <svg xmlns="http://www.w3.org/2000/svg" className="h-6 w-6 sm:h-6 sm:w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2} aria-hidden>
+                  <path strokeLinecap="round" strokeLinejoin="round" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />
+                </svg>
+              </div>
+            </div>
+            <div className="min-w-0 flex-1 text-center sm:text-left">
+              <p className="text-sm font-bold uppercase tracking-wide text-red-950 sm:text-base">
+                Documentación obligatoria
+              </p>
+              <p className="mt-1.5 text-sm font-semibold leading-snug text-red-950">
+                Para postular <span className="underline decoration-red-600 decoration-1 underline-offset-2">debe contar sí o sí</span> con toda la documentación exigida: archivos digitales legibles, al día y completos.
+              </p>
+              <p className="mt-2 text-xs font-medium leading-relaxed text-red-900 sm:text-sm">
+                Revise la sección <strong>«Documentos obligatorios»</strong> en el menú de abajo antes de continuar. Las postulaciones sin la documentación completa o ilegible <strong>no serán admisibles</strong>.
+              </p>
             </div>
           </div>
         </div>

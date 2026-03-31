@@ -1,5 +1,6 @@
-import { doc, getDoc, setDoc, deleteDoc } from 'firebase/firestore'
-import { db } from '../firebase/config'
+import { deleteDoc, doc, getDoc, setDoc } from 'firebase/firestore'
+import { httpsCallable } from 'firebase/functions'
+import { db, functions } from '../firebase/config'
 
 const CONFIG_DOC = 'config/filtro_puntaje'
 const CONFIG_DOC_REVISION = 'config/filtro_revision_doc'
@@ -20,15 +21,22 @@ export async function getFiltroPuntajeConfig(): Promise<FiltroPuntajeConfig | nu
   }
 }
 
-export async function setFiltroPuntajeConfig(puntaje: number): Promise<void> {
-  await setDoc(doc(db, CONFIG_DOC), {
-    puntajeAplicado: puntaje,
-    updatedAt: new Date().toISOString(),
-  })
+/** Aplica umbral de puntaje solo sobre postulantes con documentación validada (servidor). */
+export async function aplicarFiltroPuntajeConfig(puntajeMinimo: number): Promise<{
+  cantidadSeleccionados: number
+  puntajeAplicado: number
+}> {
+  const fn = httpsCallable<{ puntajeMinimo: number }, { ok: boolean; cantidadSeleccionados: number; puntajeAplicado: number }>(
+    functions,
+    'aplicarFiltroPuntajeAdmin',
+  )
+  const { data } = await fn({ puntajeMinimo })
+  return { cantidadSeleccionados: data.cantidadSeleccionados, puntajeAplicado: data.puntajeAplicado }
 }
 
 export async function clearFiltroPuntajeConfig(): Promise<void> {
-  await deleteDoc(doc(db, CONFIG_DOC))
+  const fn = httpsCallable<void, { ok: boolean }>(functions, 'limpiarFiltroPuntajeAdmin')
+  await fn()
 }
 
 // ── Filtro revisión de documentación ──

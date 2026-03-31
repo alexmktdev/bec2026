@@ -488,6 +488,81 @@ export const obtenerPostulantesRevisor = onCall(
   }
 )
 
+/** Umbrales permitidos para el filtro de puntaje (misma grilla que el panel). */
+const UMBRALES_PUNTAJE_ADMIN = new Set([30, 40, 50, 60, 70, 80])
+
+/**
+ * Aplica el filtro por puntaje total solo sobre postulantes con documentación validada.
+ * Persiste `config/filtro_puntaje`. Solo superadmin (el cliente ya no escribe ese doc).
+ */
+export const aplicarFiltroPuntajeAdmin = onCall(
+  { ...webCallableBase(), memory: '256MiB', timeoutSeconds: 60, maxInstances: 5 },
+  async (request) => {
+    const callerUid = request.auth?.uid
+    if (!callerUid) throw new HttpsError('unauthenticated', 'Debe iniciar sesión.')
+
+    const db = admin.firestore()
+    await verifySuperAdmin(callerUid, db)
+
+    const raw = (request.data as { puntajeMinimo?: unknown })?.puntajeMinimo
+    const puntajeMinimo =
+      typeof raw === 'number' && Number.isFinite(raw)
+        ? raw
+        : typeof raw === 'string'
+          ? parseInt(raw, 10)
+          : NaN
+
+    if (!Number.isFinite(puntajeMinimo) || !UMBRALES_PUNTAJE_ADMIN.has(puntajeMinimo)) {
+      throw new HttpsError('invalid-argument', 'Umbral de puntaje no permitido.')
+    }
+
+    try {
+      const snapshot = await db.collection('postulantes').get()
+      const sortedDocs = ordenarDocsPostulantesComoEnPanel(snapshot.docs)
+
+      let cantidad = 0
+      for (const docSnap of sortedDocs) {
+        const data = docSnap.data()
+        if (data.estado !== 'documentacion_validada') continue
+        const puntaje = calcularPuntajeTotal(data as PostulanteData)
+        if (puntaje.total >= puntajeMinimo) cantidad++
+      }
+
+      await db.collection('config').doc('filtro_puntaje').set({
+        puntajeAplicado: puntajeMinimo,
+        updatedAt: new Date().toISOString(),
+      })
+
+      return { ok: true as const, puntajeAplicado: puntajeMinimo, cantidadSeleccionados: cantidad }
+    } catch (e: unknown) {
+      console.error('Error aplicarFiltroPuntajeAdmin:', e)
+      if (e instanceof HttpsError) throw e
+      throw new HttpsError('internal', 'No se pudo aplicar el filtro de puntaje.')
+    }
+  },
+)
+
+export const limpiarFiltroPuntajeAdmin = onCall(
+  { ...webCallableBase(), memory: '256MiB', timeoutSeconds: 15, maxInstances: 5 },
+  async (request) => {
+    const callerUid = request.auth?.uid
+    if (!callerUid) throw new HttpsError('unauthenticated', 'Debe iniciar sesión.')
+
+    const db = admin.firestore()
+    await verifySuperAdmin(callerUid, db)
+
+    try {
+      const ref = db.collection('config').doc('filtro_puntaje')
+      const snap = await ref.get()
+      if (snap.exists) await ref.delete()
+      return { ok: true as const }
+    } catch (e: unknown) {
+      console.error('Error limpiarFiltroPuntajeAdmin:', e)
+      throw new HttpsError('internal', 'No se pudo limpiar el filtro de puntaje.')
+    }
+  },
+)
+
 function sanitizePostulanteUpdatePayload(raw: unknown): Record<string, unknown> {
   if (raw === null || typeof raw !== 'object' || Array.isArray(raw)) {
     throw new HttpsError('invalid-argument', 'El campo fields debe ser un objeto.')

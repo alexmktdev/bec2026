@@ -86,7 +86,8 @@ const TH = 'px-3 py-2.5 text-left text-[10px] font-bold uppercase tracking-wides
 // ── Componente principal ──────────────────────────────────────────────────────
 
 export function FiltroDesempate() {
-  const { postulantes, loading, errorPostulantes, refrescarPostulantes } = useAdminFilter()
+  const { postulantesFiltrados, puntajeAplicado, loading, errorPostulantes, refrescarPostulantes } =
+    useAdminFilter()
 
   const [criterioSeleccionado, setCriterioSeleccionado] = useState<CriterioDesempate>('nem')
   const [criterioActivo, setCriterioActivo] = useState<CriterioDesempate | null>(null)
@@ -106,8 +107,13 @@ export function FiltroDesempate() {
     }).catch(console.error)
   }, [])
 
-  // Postulantes con documentación validada
-  const validados = postulantes.filter((p) => p.estado === 'documentacion_validada')
+  // Entrada: salida del filtro por puntaje (solo tras aplicar umbral en servidor sobre documentación validada)
+  const validados = useMemo(() => {
+    if (puntajeAplicado == null) return []
+    return postulantesFiltrados.filter(
+      (p) => p.estado === 'documentacion_validada' || p.estado === 'aprobado',
+    )
+  }, [postulantesFiltrados, puntajeAplicado])
 
   // Lista ordenada según criterio activo (siempre se ordena por total de mayor a menor, y usa desempate)
   const listaOrdenada = sortByDesempate(validados, criterioActivo)
@@ -201,13 +207,22 @@ export function FiltroDesempate() {
             <div>
               <h3 className="text-sm font-bold text-blue-900 uppercase tracking-tight">FILTRADO POR DESEMPATE</h3>
               <p className="mt-1 text-xs text-blue-800 leading-relaxed">
-                Esta sección muestra los postulantes con <strong>documentación validada</strong>, ordenados según el criterio de desempate seleccionado.
+                Esta sección muestra los postulantes que <strong>ya pasaron revisión de documentos</strong> y el{' '}
+                <strong>filtro por puntaje total</strong> vigente, ordenados según el criterio de desempate seleccionado.
                 El orden completo de desempate es: <strong>NEM → RSH → Condición médica → Hermanos/hijos → Fecha de postulación</strong>.
                 Al establecer un criterio, ese pasa a ser el primero en el orden de desempate y los demás siguen en secuencia.
                 Los primeros <strong>150 postulantes</strong> serían los beneficiarios de la beca.
               </p>
             </div>
           </div>
+
+          {puntajeAplicado == null && (
+            <div className="rounded-xl border border-amber-300 bg-amber-50 p-4 text-sm text-amber-900">
+              <strong>Sin filtro de puntaje aplicado.</strong> Primero debe completarse la revisión de documentos y luego
+              aplicar el umbral en <strong>Filtrar por puntaje total</strong>. Hasta entonces esta vista no muestra candidatos
+              para desempate.
+            </div>
+          )}
 
           {/* Resumen Total */}
           <div className="flex items-center gap-4 rounded-xl border border-blue-200 bg-gradient-to-r from-blue-50 to-white p-4 shadow-sm">
@@ -219,7 +234,10 @@ export function FiltroDesempate() {
             <div>
               <p className="text-xs font-bold uppercase tracking-widest text-blue-900">Total en esta etapa final</p>
               <p className="text-2xl font-black text-blue-800 tracking-tight leading-none mt-1">
-                {listaOrdenada.length} <span className="text-base font-semibold text-blue-600 tracking-normal">postulantes (validados)</span>
+                {listaOrdenada.length}{' '}
+                <span className="text-base font-semibold text-blue-600 tracking-normal">
+                  postulantes (tras revisión doc. y puntaje)
+                </span>
               </p>
             </div>
           </div>
@@ -320,7 +338,7 @@ export function FiltroDesempate() {
           <div className="flex flex-wrap items-center justify-between gap-3">
             <div className="flex items-center gap-2">
               <span className="rounded-full border border-slate-200 bg-white px-3 py-1 text-xs font-semibold text-slate-700 shadow-sm">
-                {listaOrdenada.length} postulante{listaOrdenada.length !== 1 ? 's' : ''} con documentación validada
+                {listaOrdenada.length} postulante{listaOrdenada.length !== 1 ? 's' : ''} en la lista de desempate
               </span>
               {listaOrdenada.length > 0 && (
                 <span className="rounded-full border border-blue-200 bg-blue-50 px-3 py-1 text-xs font-semibold text-blue-700">

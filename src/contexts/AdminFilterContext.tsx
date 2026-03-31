@@ -1,8 +1,19 @@
 // @refresh reset
 import { createContext, useContext, useState, useCallback, useEffect, type ReactNode } from 'react'
 import type { PostulanteFirestore } from '../types/postulante'
-import { getFiltroPuntajeConfig, setFiltroPuntajeConfig, clearFiltroPuntajeConfig } from '../services/filtroConfigService'
+import { getFiltroPuntajeConfig, aplicarFiltroPuntajeConfig, clearFiltroPuntajeConfig } from '../services/filtroConfigService'
 import { obtenerPostulantes } from '../services/postulacionService'
+
+/** Postulantes elegibles para el filtro por puntaje: documentación validada y puntaje ≥ umbral. */
+export function postulantesPasandoFiltroPuntaje(
+  lista: PostulanteFirestore[],
+  puntajeAplicado: number,
+): PostulanteFirestore[] {
+  return lista.filter(
+    (p) =>
+      p.estado === 'documentacion_validada' && (p.puntaje?.total ?? 0) >= puntajeAplicado,
+  )
+}
 
 interface AdminFilterState {
   puntajeAplicado: number | null
@@ -13,8 +24,9 @@ interface AdminFilterState {
 }
 
 interface AdminFilterContextValue extends AdminFilterState {
-  setFiltroPuntaje: (puntaje: number, lista: PostulanteFirestore[]) => void
-  clearFiltro: () => void
+  /** Persiste el umbral en servidor y recalcula la lista (solo postulantes con documentación validada). */
+  setFiltroPuntaje: (puntaje: number) => Promise<void>
+  clearFiltro: () => Promise<void>
   refrescarPostulantes: () => Promise<void>
   actualizarPostulanteLocal: (actualizado: PostulanteFirestore) => void
   eliminarPostulanteLocal: (id: string) => void
@@ -45,9 +57,8 @@ export function AdminFilterProvider({ children }: { children: ReactNode }) {
         setState({
           postulantes: data,
           puntajeAplicado,
-          postulantesFiltrados: puntajeAplicado != null
-            ? data.filter((p) => p.puntaje.total >= puntajeAplicado)
-            : [],
+          postulantesFiltrados:
+            puntajeAplicado != null ? postulantesPasandoFiltroPuntaje(data, puntajeAplicado) : [],
           loading: false,
           errorPostulantes: null,
         })
@@ -75,9 +86,10 @@ export function AdminFilterProvider({ children }: { children: ReactNode }) {
         ...s,
         loading: false,
         postulantes: data,
-        postulantesFiltrados: s.puntajeAplicado != null
-          ? data.filter((p) => p.puntaje.total >= s.puntajeAplicado!)
-          : [],
+        postulantesFiltrados:
+          s.puntajeAplicado != null
+            ? postulantesPasandoFiltroPuntaje(data, s.puntajeAplicado)
+            : [],
       }))
     } catch (err) {
       console.error('Error refrescando postulantes:', err)
@@ -96,9 +108,10 @@ export function AdminFilterProvider({ children }: { children: ReactNode }) {
       return {
         ...s,
         postulantes,
-        postulantesFiltrados: s.puntajeAplicado != null
-          ? postulantes.filter((p) => p.puntaje.total >= s.puntajeAplicado!)
-          : [],
+        postulantesFiltrados:
+          s.puntajeAplicado != null
+            ? postulantesPasandoFiltroPuntaje(postulantes, s.puntajeAplicado)
+            : [],
       }
     })
   }, [])
@@ -110,26 +123,35 @@ export function AdminFilterProvider({ children }: { children: ReactNode }) {
       return {
         ...s,
         postulantes,
-        postulantesFiltrados: s.postulantesFiltrados.filter((p) => p.id !== id),
+        postulantesFiltrados:
+          s.puntajeAplicado != null
+            ? postulantesPasandoFiltroPuntaje(postulantes, s.puntajeAplicado)
+            : [],
       }
     })
   }, [])
 
-  const setFiltroPuntaje = useCallback(async (puntaje: number, lista: PostulanteFirestore[]) => {
-    setState((s) => ({ ...s, puntajeAplicado: puntaje, postulantesFiltrados: lista }))
+  const setFiltroPuntaje = useCallback(async (puntaje: number) => {
     try {
-      await setFiltroPuntajeConfig(puntaje)
+      await aplicarFiltroPuntajeConfig(puntaje)
+      setState((s) => ({
+        ...s,
+        puntajeAplicado: puntaje,
+        postulantesFiltrados: postulantesPasandoFiltroPuntaje(s.postulantes, puntaje),
+      }))
     } catch (err) {
       console.error('Error guardando filtro:', err)
+      throw err
     }
   }, [])
 
   const clearFiltro = useCallback(async () => {
-    setState((s) => ({ ...s, puntajeAplicado: null, postulantesFiltrados: [] }))
     try {
       await clearFiltroPuntajeConfig()
+      setState((s) => ({ ...s, puntajeAplicado: null, postulantesFiltrados: [] }))
     } catch (err) {
       console.error('Error al limpiar filtro:', err)
+      throw err
     }
   }, [])
 
