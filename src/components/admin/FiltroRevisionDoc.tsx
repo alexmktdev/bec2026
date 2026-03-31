@@ -16,6 +16,8 @@ import { ModalMotivoRechazo } from './FiltroRevisionDoc/ModalMotivoRechazo'
 import { RevisionTable } from './FiltroRevisionDoc/RevisionTable'
 import { AsignacionRevisoresModal } from './FiltroRevisionDoc/AsignacionRevisoresModal'
 import { VerAsignacionesModal } from './FiltroRevisionDoc/VerAsignacionesModal'
+import { CoberturaTramosRevisionResumen } from './FiltroRevisionDoc/CoberturaTramosRevisionResumen'
+import { resumenFaltantesAsignacionRevision } from '../../utils/tramosCobertura'
 
 const ITEMS_PER_PAGE = 10
 
@@ -45,6 +47,7 @@ export function FiltroRevisionDoc() {
   const [toastEvaluacion, setToastEvaluacion] = useState(false)
   const [verTramosLectura, setVerTramosLectura] = useState(false)
   const [misTramosAsignados, setMisTramosAsignados] = useState<TramoVigenteEstado[]>([])
+  const [todosLosTramosServidor, setTodosLosTramosServidor] = useState<TramoVigenteEstado[]>([])
   const [confirmandoLimpiarTramos, setConfirmandoLimpiarTramos] = useState(false)
   const [limpiandoTramos, setLimpiandoTramos] = useState(false)
   const [errorLimpiarTramos, setErrorLimpiarTramos] = useState<string | null>(null)
@@ -64,17 +67,25 @@ export function FiltroRevisionDoc() {
     [todosLosPostulantes],
   )
 
+  const puedeConsultarTramos =
+    roleAdmin === 'revisor' || roleAdmin === 'superadmin' || roleAdmin === 'admin'
+
   useEffect(() => {
-    if (!user?.uid || (roleAdmin !== 'revisor' && roleAdmin !== 'superadmin')) {
+    if (!user?.uid || !puedeConsultarTramos) {
       setMisTramosAsignados([])
+      setTodosLosTramosServidor([])
       return
     }
     obtenerTramos()
       .then((tramos) => {
+        setTodosLosTramosServidor(tramos)
         setMisTramosAsignados(tramos.filter((t) => t.reviewerUid === user.uid))
       })
-      .catch(() => setMisTramosAsignados([]))
-  }, [roleAdmin, user?.uid, huellaAssignedTo])
+      .catch(() => {
+        setMisTramosAsignados([])
+        setTodosLosTramosServidor([])
+      })
+  }, [roleAdmin, user?.uid, huellaAssignedTo, puedeConsultarTramos])
 
   const activarFiltroDoc = async (activo: boolean) => {
     setFiltroDocActivo(activo)
@@ -158,6 +169,16 @@ export function FiltroRevisionDoc() {
     return listaFinalActual.slice(start, start + ITEMS_PER_PAGE)
   }, [listaFinalActual, paginaFinal])
 
+  const resumenCoberturaPagina = useMemo(() => {
+    const n = todosLosPostulantes.length
+    if (n === 0 || !puedeConsultarTramos) return null
+    return resumenFaltantesAsignacionRevision(
+      n,
+      todosLosTramosServidor,
+      todosLosPostulantes,
+    )
+  }, [todosLosPostulantes, todosLosTramosServidor, puedeConsultarTramos])
+
   const handleFormatearRevision = async () => {
     setFormateando(true)
     try {
@@ -189,6 +210,10 @@ export function FiltroRevisionDoc() {
             </span>
             <button onClick={() => setToastEvaluacion(false)} className="text-emerald-600 hover:text-emerald-900 font-black px-2">✕</button>
           </div>
+        )}
+
+        {resumenCoberturaPagina && (
+          <CoberturaTramosRevisionResumen resumen={resumenCoberturaPagina} variant="page" />
         )}
 
         <div className="rounded-xl border border-blue-200 bg-blue-50/50 p-4">

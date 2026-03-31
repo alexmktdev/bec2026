@@ -2,6 +2,8 @@ import { useState, useEffect, useMemo } from 'react'
 import type { PostulanteFirestore, TramoAsignacion, TramoVigenteEstado } from '../../../types/postulante'
 import { obtenerTramos, asignarTramos, limpiarTodasLasAsignacionesTramos } from '../../../services/tramosService'
 import { findSegmentoSolapado, legacySegmentId } from '../../../utils/tramosSegments'
+import { resumenFaltantesAsignacionRevision } from '../../../utils/tramosCobertura'
+import { CoberturaTramosRevisionResumen } from './CoberturaTramosRevisionResumen'
 import { obtenerRevisoresAdmin, type UserAdminInfo } from '../../../services/userService'
 
 interface Props {
@@ -152,6 +154,16 @@ export function AsignacionRevisoresModal({
     [asignaciones],
   )
 
+  const resumenCoberturaModal = useMemo(
+    () =>
+      resumenFaltantesAsignacionRevision(
+        totalEnVista,
+        asignaciones,
+        postulantesEnVistaRevision,
+      ),
+    [totalEnVista, asignaciones, postulantesEnVistaRevision],
+  )
+
   const handleSave = async () => {
     setConfirmDialog({
       title: 'Guardar asignaciones',
@@ -288,6 +300,8 @@ export function AsignacionRevisoresModal({
               </button>
             </div>
           )}
+
+          <CoberturaTramosRevisionResumen resumen={resumenCoberturaModal} variant="modal" />
 
           <div className="rounded-lg border border-blue-200 bg-blue-100/50 p-4 text-blue-800">
             <p>
