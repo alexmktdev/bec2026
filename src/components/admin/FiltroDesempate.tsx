@@ -26,6 +26,12 @@ const CRITERIOS_ACUMULABLES: { value: CriterioDesempate | 'none'; label: string 
   { value: 'fecha', label: '6° filtro: + Fecha/Hora de postulación' },
 ]
 
+function normalizarCriterioUI(
+  value: CriterioDesempate | 'none' | null | undefined,
+): CriterioDesempate | 'none' {
+  return value == null ? 'none' : value
+}
+
 // ── Componente principal ──────────────────────────────────────────────────────
 
 export function FiltroDesempate() {
@@ -48,7 +54,7 @@ export function FiltroDesempate() {
       const data = await obtenerRankingDesempate(criterio)
       setPuntajeAplicado(data.puntajeAplicado)
       setListaOrdenada(data.postulantes)
-      setCriterioSeleccionado(data.criterioHasta ?? 'none')
+      setCriterioSeleccionado(normalizarCriterioUI(data.criterioHasta))
     } catch (err) {
       console.error('Error cargando ranking de desempate:', err)
       setErrorPostulantes('No se pudo cargar el ranking de desempate. Intente nuevamente.')
@@ -62,7 +68,7 @@ export function FiltroDesempate() {
       try {
         const saved = await getCriterioDesempateConfig()
         const criterioInicial = saved ?? null
-        setCriterioSeleccionado(criterioInicial ?? 'none')
+        setCriterioSeleccionado(normalizarCriterioUI(criterioInicial))
         await cargarRanking(criterioInicial)
       } catch {
         await cargarRanking(null)
@@ -108,12 +114,13 @@ export function FiltroDesempate() {
   async function handleAplicarCriterio() {
     setGuardandoCriterio(true)
     try {
-      if (criterioSeleccionado === 'none') {
+      const criterioBackend = criterioSeleccionado === 'none' ? null : criterioSeleccionado
+      if (criterioBackend == null) {
         await clearCriterioDesempateConfig()
         await cargarRanking(null)
       } else {
-        await setCriterioDesempateConfig(criterioSeleccionado)
-        await cargarRanking(criterioSeleccionado)
+        await setCriterioDesempateConfig(criterioBackend)
+        await cargarRanking(criterioBackend)
       }
     } catch (err) {
       console.error('Error aplicando criterio:', err)
@@ -209,7 +216,9 @@ export function FiltroDesempate() {
                     ATENCIÓN: {empatesDetectados.length} grupo(s) de puntajes con postulantes empatados
                   </h3>
                   <p className="mt-1 text-xs text-amber-800 leading-relaxed mb-3">
-                    El sistema ha ordenado automáticamente la tabla final evaluando los criterios de desempate en cascada para evitar duplicidades en el ranking.
+                    {criterioSeleccionado === 'none'
+                      ? 'El sistema ha ordenado por puntaje total; este orden se hereda de la pestaña anterior de Filtrado por puntaje total.'
+                      : 'El sistema ha ordenado automáticamente la tabla final evaluando los criterios de desempate en cascada para evitar duplicidades en el ranking.'}
                   </p>
                   
                   <div className="space-y-2 max-h-[180px] overflow-y-auto pr-2">
@@ -241,7 +250,7 @@ export function FiltroDesempate() {
                   Filtro de desempate acumulado hasta
                 </label>
                 <select
-                  value={criterioSeleccionado}
+                  value={normalizarCriterioUI(criterioSeleccionado)}
                   onChange={(e) => setCriterioSeleccionado(e.target.value as CriterioDesempate | 'none')}
                   className="w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm text-slate-900 focus:outline-none focus:ring-1 focus:ring-blue-500"
                 >
