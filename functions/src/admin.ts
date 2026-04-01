@@ -566,31 +566,11 @@ export const obtenerPostulantesRevisor = onCall(
 /** Umbrales permitidos para el filtro de puntaje (misma grilla que el panel). */
 const UMBRALES_PUNTAJE_ADMIN = new Set([30, 40, 50, 60, 70, 80])
 
-function parseNemValue(raw: unknown): number {
-  const v = typeof raw === 'number' ? raw : parseFloat(String(raw ?? '').replace(',', '.'))
-  return Number.isFinite(v) ? v : -1
-}
+type NivelDesempate = 'nem' | 'rsh' | 'enfermedad' | 'hermanos' | 'fecha'
+const NIVELES_DESEMPATE: NivelDesempate[] = ['nem', 'rsh', 'enfermedad', 'hermanos', 'fecha']
 
-function parseRshValue(raw: unknown): number {
-  const parsed = parseInt(String(raw ?? '').replace(/[^\d]/g, ''), 10)
-  return Number.isFinite(parsed) ? parsed : 999
-}
-
-function diseasePriority(raw: Record<string, unknown>): number {
-  const cat = String(raw.enfermedadCatastrofica ?? '').toLowerCase() === 'si'
-  const cron = String(raw.enfermedadCronica ?? '').toLowerCase() === 'si'
-  if (cat && cron) return 3
-  if (cat) return 2
-  if (cron) return 1
-  return 0
-}
-
-function siblingsPriority(raw: Record<string, unknown>): number {
-  const twoOrMore = String(raw.tieneDosOMasHermanosOHijosEstudiando ?? '').toLowerCase() === 'si'
-  const one = String(raw.tieneUnHermanOHijoEstudiando ?? '').toLowerCase() === 'si'
-  if (twoOrMore) return 2
-  if (one) return 1
-  return 0
+function nivelIncluye(nivelHasta: NivelDesempate, criterio: NivelDesempate): boolean {
+  return NIVELES_DESEMPATE.indexOf(criterio) <= NIVELES_DESEMPATE.indexOf(nivelHasta)
 }
 
 function registrationTimestamp(raw: Record<string, unknown>): number {
@@ -678,10 +658,13 @@ export const limpiarFiltroPuntajeAdmin = onCall(
 
 /**
  * Ranking de desempate calculado en backend (sin depender de filtros locales en frontend).
- * Cadena fija:
- * 1) Puntaje total (desc) → 2) NEM real (desc) → 3) RSH real (asc)
- * 4) Enfermedad (cat+cron, cat, cron, ninguna) → 5) Hermanos/Hijos (2+,1,0)
- * 6) Fecha/hora de postulación (más antigua primero)
+ * Base siempre activa: Puntaje total (desc).
+ * Nivel seleccionable acumulable:
+ * - nem: + Puntaje NEM (desc)
+ * - rsh: + Puntaje NEM (desc) + Puntaje RSH (desc)
+ * - enfermedad: + anteriores + Puntaje enfermedad (desc)
+ * - hermanos: + anteriores + Puntaje hermanos/hijos (desc)
+ * - fecha: + anteriores + Fecha/hora de postulación (desc)
  */
 export const obtenerRankingDesempateAdmin = onCall(
   { ...webCallableBase(), memory: '512MiB', timeoutSeconds: 60, maxInstances: 10 },
@@ -693,6 +676,11 @@ export const obtenerRankingDesempateAdmin = onCall(
     await assertRevisorOrAdmin(callerUid, db, request.auth?.token?.email)
 
     try {
+      const criterioHastaRaw = (request.data as { criterioHasta?: unknown } | undefined)?.criterioHasta
+      const criterioHasta = NIVELES_DESEMPATE.includes(String(criterioHastaRaw) as NivelDesempate)
+        ? (String(criterioHastaRaw) as NivelDesempate)
+        : 'fecha'
+
       const filtroSnap = await db.collection('config').doc('filtro_puntaje').get()
       const puntajeAplicadoRaw = filtroSnap.data()?.puntajeAplicado
       const puntajeAplicado =
@@ -701,7 +689,7 @@ export const obtenerRankingDesempateAdmin = onCall(
           : null
 
       if (puntajeAplicado == null) {
-        return { postulantes: [], puntajeAplicado: null }
+        return { postulantes: [], puntajeAplicado: null, criterioHasta }
       }
 
       const snapshot = await db.collection('postulantes').get()
@@ -715,34 +703,46 @@ export const obtenerRankingDesempateAdmin = onCall(
       })
 
       const ranking = [...elegibles].sort((a, b) => {
-        const totalA = calcularPuntajeTotal(a as unknown as PostulanteData).total ?? 0
-        const totalB = calcularPuntajeTotal(b as unknown as PostulanteData).total ?? 0
+        const puntajeA = calcularPuntajeTotal(a as unknown as PostulanteData)
+        const puntajeB = calcularPuntajeTotal(b as unknown as PostulanteData)
+        const totalA = puntajeA.total ?? 0
+        const totalB = puntajeB.total ?? 0
         if (totalA !== totalB) return totalB - totalA
 
-        const nemA = parseNemValue(a.nem)
-        const nemB = parseNemValue(b.nem)
-        if (nemA !== nemB) return nemB - nemA
+        if (nivelIncluye(criterioHasta, 'nem')) {
+          const nemA = puntajeA.nem ?? 0
+          const nemB = puntajeB.nem ?? 0
+          if (nemA !== nemB) return nemB - nemA
+        }
 
-        const rshA = parseRshValue(a.tramoRegistroSocial)
-        const rshB = parseRshValue(b.tramoRegistroSocial)
-        if (rshA !== rshB) return rshA - rshB
+        if (nivelIncluye(criterioHasta, 'rsh')) {
+          const rshA = puntajeA.rsh ?? 0
+          const rshB = puntajeB.rsh ?? 0
+          if (rshA !== rshB) return rshB - rshA
+        }
 
-        const diseaseA = diseasePriority(a)
-        const diseaseB = diseasePriority(b)
-        if (diseaseA !== diseaseB) return diseaseB - diseaseA
+        if (nivelIncluye(criterioHasta, 'enfermedad')) {
+          const diseaseA = puntajeA.enfermedad ?? 0
+          const diseaseB = puntajeB.enfermedad ?? 0
+          if (diseaseA !== diseaseB) return diseaseB - diseaseA
+        }
 
-        const siblingsA = siblingsPriority(a)
-        const siblingsB = siblingsPriority(b)
-        if (siblingsA !== siblingsB) return siblingsB - siblingsA
+        if (nivelIncluye(criterioHasta, 'hermanos')) {
+          const siblingsA = puntajeA.hermanos ?? 0
+          const siblingsB = puntajeB.hermanos ?? 0
+          if (siblingsA !== siblingsB) return siblingsB - siblingsA
+        }
 
-        const dateA = registrationTimestamp(a)
-        const dateB = registrationTimestamp(b)
-        if (dateA !== dateB) return dateA - dateB
+        if (nivelIncluye(criterioHasta, 'fecha')) {
+          const dateA = registrationTimestamp(a)
+          const dateB = registrationTimestamp(b)
+          if (dateA !== dateB) return dateB - dateA
+        }
 
         return String(a.id).localeCompare(String(b.id))
       })
 
-      return { postulantes: ranking, puntajeAplicado }
+      return { postulantes: ranking, puntajeAplicado, criterioHasta }
     } catch (e: unknown) {
       console.error('Error obtenerRankingDesempateAdmin:', e)
       if (e instanceof HttpsError) throw e

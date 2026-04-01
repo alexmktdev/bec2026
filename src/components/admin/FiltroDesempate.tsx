@@ -8,9 +8,21 @@ import { formatDate } from '../../utils/inputFormatters'
 import { resumenCuentaBancariaListado } from '../../utils/cuentaBancariaDisplay'
 import { ZipDownloadBriefNotice } from './ZipDownloadBriefNotice'
 import { obtenerRankingDesempate } from '../../services/desempateService'
+import {
+  getCriterioDesempateConfig,
+  setCriterioDesempateConfig,
+  type CriterioDesempate,
+} from '../../services/filtroConfigService'
 
 const TD = 'px-3 py-2 text-xs text-slate-700 whitespace-nowrap border-b border-slate-100'
 const TH = 'px-3 py-2.5 text-left text-[10px] font-bold uppercase tracking-widest text-slate-500 whitespace-nowrap bg-slate-50 border-b border-slate-200'
+const CRITERIOS_ACUMULABLES: { value: CriterioDesempate; label: string }[] = [
+  { value: 'nem', label: '2° filtro: Puntaje total + Puntaje NEM' },
+  { value: 'rsh', label: '3° filtro: + Puntaje RSH' },
+  { value: 'enfermedad', label: '4° filtro: + Puntaje Enfermedad' },
+  { value: 'hermanos', label: '5° filtro: + Puntaje Hermanos/Hijos' },
+  { value: 'fecha', label: '6° filtro: + Fecha/Hora de postulación' },
+]
 
 // ── Componente principal ──────────────────────────────────────────────────────
 
@@ -20,18 +32,21 @@ export function FiltroDesempate() {
   const [puntajeAplicado, setPuntajeAplicado] = useState<number | null>(null)
   const [loading, setLoading] = useState(true)
   const [errorPostulantes, setErrorPostulantes] = useState<string | null>(null)
+  const [criterioSeleccionado, setCriterioSeleccionado] = useState<CriterioDesempate>('fecha')
+  const [guardandoCriterio, setGuardandoCriterio] = useState(false)
   const [avisoZipTick, setAvisoZipTick] = useState(0)
   const [exportando, setExportando] = useState<string | null>(null)
   const scrollRef = useRef<HTMLDivElement>(null)
 
-  const cargarRanking = async () => {
+  const cargarRanking = async (criterio: CriterioDesempate) => {
     setLoading(true)
     setErrorPostulantes(null)
     try {
       await refrescarPostulantes()
-      const data = await obtenerRankingDesempate()
+      const data = await obtenerRankingDesempate(criterio)
       setPuntajeAplicado(data.puntajeAplicado)
       setListaOrdenada(data.postulantes)
+      setCriterioSeleccionado(data.criterioHasta || criterio)
     } catch (err) {
       console.error('Error cargando ranking de desempate:', err)
       setErrorPostulantes('No se pudo cargar el ranking de desempate. Intente nuevamente.')
@@ -41,7 +56,17 @@ export function FiltroDesempate() {
   }
 
   useEffect(() => {
-    void cargarRanking()
+    const init = async () => {
+      try {
+        const saved = await getCriterioDesempateConfig()
+        const criterioInicial = saved ?? 'fecha'
+        setCriterioSeleccionado(criterioInicial)
+        await cargarRanking(criterioInicial)
+      } catch {
+        await cargarRanking('fecha')
+      }
+    }
+    void init()
   }, [])
 
   // Detectar y agrupar empates
@@ -69,12 +94,25 @@ export function FiltroDesempate() {
   async function handleExportExcel() {
     setExportando('excel')
     try {
-      await exportarExcel(listaOrdenada)
+      await exportarExcel(listaOrdenada.slice(0, 150))
     } catch (err) {
       console.error('Error exportando Excel:', err)
       alert('Error al exportar Excel.')
     } finally {
       setExportando(null)
+    }
+  }
+
+  async function handleAplicarCriterio() {
+    setGuardandoCriterio(true)
+    try {
+      await setCriterioDesempateConfig(criterioSeleccionado)
+      await cargarRanking(criterioSeleccionado)
+    } catch (err) {
+      console.error('Error aplicando criterio:', err)
+      alert('No se pudo aplicar el criterio de desempate.')
+    } finally {
+      setGuardandoCriterio(false)
     }
   }
 
@@ -106,8 +144,8 @@ export function FiltroDesempate() {
                 Entran aquí <strong>todos</strong> los postulantes que cumplieron <strong>documentación validada</strong> y el{' '}
                 <strong>filtro por puntaje total</strong> vigente en el servidor — <strong>sin tope de cantidad</strong>{' '}
                 (pueden ser 200, 300, 400 o los que correspondan). La tabla muestra el <strong>ranking oficial</strong> calculado
-                en backend con cadena fija y acumulable:
-                <strong> puntaje total ↓ → NEM ↓ → RSH ↑ → condición médica → hermanos/hijos → fecha/hora de postulación ↑</strong>.
+                en backend con filtros acumulables por etapas:
+                <strong> puntaje total ↓ → puntaje NEM ↓ → puntaje RSH ↓ → puntaje enfermedad ↓ → puntaje hermanos/hijos ↓ → fecha/hora ↓</strong>.
               </p>
             </div>
           </div>
@@ -176,10 +214,35 @@ export function FiltroDesempate() {
 
           {/* Criterios aplicados en backend */}
           <div className="rounded-xl border border-slate-200 bg-white p-5 shadow-sm space-y-4">
+            <div className="flex flex-wrap items-end gap-3">
+              <div className="min-w-[320px] flex-1">
+                <label className="mb-1 block text-[10px] font-bold uppercase tracking-widest text-slate-500">
+                  Filtro de desempate acumulado hasta
+                </label>
+                <select
+                  value={criterioSeleccionado}
+                  onChange={(e) => setCriterioSeleccionado(e.target.value as CriterioDesempate)}
+                  className="w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm text-slate-900 focus:outline-none focus:ring-1 focus:ring-blue-500"
+                >
+                  {CRITERIOS_ACUMULABLES.map((c) => (
+                    <option key={c.value} value={c.value}>
+                      {c.label}
+                    </option>
+                  ))}
+                </select>
+              </div>
+              <button
+                onClick={() => { void handleAplicarCriterio() }}
+                disabled={guardandoCriterio || loading}
+                className="rounded-lg bg-blue-700 px-4 py-2 text-xs font-semibold text-white shadow-sm hover:bg-blue-800 disabled:cursor-not-allowed disabled:opacity-50"
+              >
+                {guardandoCriterio ? 'Aplicando...' : 'Aplicar filtro'}
+              </button>
+            </div>
             <div className="rounded-lg border border-emerald-200 bg-emerald-50 px-3 py-2">
               <p className="text-xs text-emerald-800">
-                <span className="font-bold">Orden aplicado:</span> 1) Puntaje total (desc) · 2) NEM (desc) · 3) RSH (asc) ·
-                4) Enfermedad catastrófica/crónica · 5) Hermanos/hijos estudiando · 6) Fecha/hora de postulación (más antigua primero).
+                <span className="font-bold">Regla:</span> siempre se ordena por puntaje total (desc). Luego se acumulan
+                criterios hasta el nivel seleccionado del menú.
               </p>
             </div>
           </div>
@@ -192,13 +255,13 @@ export function FiltroDesempate() {
               </span>
               {listaOrdenada.length > 0 && (
                 <span className="rounded-full border border-blue-200 bg-blue-50 px-3 py-1 text-xs font-semibold text-blue-700">
-                  Orden: puntaje total ↓, luego desempate
+                  Exportación Excel: Top 150
                 </span>
               )}
             </div>
             <div className="flex flex-wrap gap-2">
               <button
-                onClick={() => { void cargarRanking() }}
+                onClick={() => { void cargarRanking(criterioSeleccionado) }}
                 disabled={loading}
                 className="flex items-center gap-1.5 rounded-lg border border-slate-300 bg-white px-3 py-2 text-xs font-semibold text-slate-700 shadow-sm hover:bg-slate-50 disabled:opacity-50"
               >
@@ -235,7 +298,7 @@ export function FiltroDesempate() {
                   <p className="text-sm font-semibold text-red-800">Error al cargar los datos</p>
                   <p className="mt-0.5 text-sm text-red-700">{errorPostulantes}</p>
                 </div>
-                <button onClick={refrescarPostulantes} className="shrink-0 rounded-lg border border-red-300 bg-white px-3 py-1.5 text-xs font-semibold text-red-700 hover:bg-red-50">
+                <button onClick={() => { void cargarRanking(criterioSeleccionado) }} className="shrink-0 rounded-lg border border-red-300 bg-white px-3 py-1.5 text-xs font-semibold text-red-700 hover:bg-red-50">
                   Reintentar
                 </button>
               </div>
