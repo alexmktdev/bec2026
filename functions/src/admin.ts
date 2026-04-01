@@ -569,7 +569,8 @@ const UMBRALES_PUNTAJE_ADMIN = new Set([30, 40, 50, 60, 70, 80])
 type NivelDesempate = 'nem' | 'rsh' | 'enfermedad' | 'hermanos' | 'fecha'
 const NIVELES_DESEMPATE: NivelDesempate[] = ['nem', 'rsh', 'enfermedad', 'hermanos', 'fecha']
 
-function nivelIncluye(nivelHasta: NivelDesempate, criterio: NivelDesempate): boolean {
+function nivelIncluye(nivelHasta: NivelDesempate | null, criterio: NivelDesempate): boolean {
+  if (nivelHasta == null) return false
   return NIVELES_DESEMPATE.indexOf(criterio) <= NIVELES_DESEMPATE.indexOf(nivelHasta)
 }
 
@@ -679,7 +680,7 @@ export const obtenerRankingDesempateAdmin = onCall(
       const criterioHastaRaw = (request.data as { criterioHasta?: unknown } | undefined)?.criterioHasta
       const criterioHasta = NIVELES_DESEMPATE.includes(String(criterioHastaRaw) as NivelDesempate)
         ? (String(criterioHastaRaw) as NivelDesempate)
-        : 'fecha'
+        : null
 
       const filtroSnap = await db.collection('config').doc('filtro_puntaje').get()
       const puntajeAplicadoRaw = filtroSnap.data()?.puntajeAplicado
@@ -693,7 +694,8 @@ export const obtenerRankingDesempateAdmin = onCall(
       }
 
       const snapshot = await db.collection('postulantes').get()
-      const postulantesBase = snapshot.docs.map((d) => ({ id: d.id, ...d.data() as Record<string, unknown> }))
+      const sortedDocs = ordenarDocsPostulantesComoEnPanel(snapshot.docs)
+      const postulantesBase = sortedDocs.map((d) => ({ id: d.id, ...d.data() as Record<string, unknown> }))
 
       const elegibles = postulantesBase.filter((p) => {
         const estado = String(p.estado ?? '')

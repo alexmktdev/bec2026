@@ -7,14 +7,14 @@ import type { CriterioDesempate } from './filtroConfigService'
 type RankingDesempateResponse = {
   postulantes: PostulanteFirestore[]
   puntajeAplicado: number | null
-  criterioHasta: CriterioDesempate
+  criterioHasta: CriterioDesempate | null
 }
 
 /** Fuente única de ranking de desempate: backend. */
 export async function obtenerRankingDesempate(
-  criterioHasta: CriterioDesempate,
+  criterioHasta: CriterioDesempate | null,
 ): Promise<RankingDesempateResponse> {
-  const fn = httpsCallable<{ criterioHasta: CriterioDesempate }, RankingDesempateResponse>(
+  const fn = httpsCallable<{ criterioHasta: CriterioDesempate | null }, RankingDesempateResponse>(
     functions,
     'obtenerRankingDesempateAdmin',
   )

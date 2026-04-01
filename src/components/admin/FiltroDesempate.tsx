@@ -11,12 +11,14 @@ import { obtenerRankingDesempate } from '../../services/desempateService'
 import {
   getCriterioDesempateConfig,
   setCriterioDesempateConfig,
+  clearCriterioDesempateConfig,
   type CriterioDesempate,
 } from '../../services/filtroConfigService'
 
 const TD = 'px-3 py-2 text-xs text-slate-700 whitespace-nowrap border-b border-slate-100'
 const TH = 'px-3 py-2.5 text-left text-[10px] font-bold uppercase tracking-widest text-slate-500 whitespace-nowrap bg-slate-50 border-b border-slate-200'
-const CRITERIOS_ACUMULABLES: { value: CriterioDesempate; label: string }[] = [
+const CRITERIOS_ACUMULABLES: { value: CriterioDesempate | 'none'; label: string }[] = [
+  { value: 'none', label: 'Sin filtro activo (solo puntaje total)' },
   { value: 'nem', label: '2° filtro: Puntaje total + Puntaje NEM' },
   { value: 'rsh', label: '3° filtro: + Puntaje RSH' },
   { value: 'enfermedad', label: '4° filtro: + Puntaje Enfermedad' },
@@ -32,13 +34,13 @@ export function FiltroDesempate() {
   const [puntajeAplicado, setPuntajeAplicado] = useState<number | null>(null)
   const [loading, setLoading] = useState(true)
   const [errorPostulantes, setErrorPostulantes] = useState<string | null>(null)
-  const [criterioSeleccionado, setCriterioSeleccionado] = useState<CriterioDesempate>('fecha')
+  const [criterioSeleccionado, setCriterioSeleccionado] = useState<CriterioDesempate | 'none'>('none')
   const [guardandoCriterio, setGuardandoCriterio] = useState(false)
   const [avisoZipTick, setAvisoZipTick] = useState(0)
   const [exportando, setExportando] = useState<string | null>(null)
   const scrollRef = useRef<HTMLDivElement>(null)
 
-  const cargarRanking = async (criterio: CriterioDesempate) => {
+  const cargarRanking = async (criterio: CriterioDesempate | null) => {
     setLoading(true)
     setErrorPostulantes(null)
     try {
@@ -46,7 +48,7 @@ export function FiltroDesempate() {
       const data = await obtenerRankingDesempate(criterio)
       setPuntajeAplicado(data.puntajeAplicado)
       setListaOrdenada(data.postulantes)
-      setCriterioSeleccionado(data.criterioHasta || criterio)
+      setCriterioSeleccionado(data.criterioHasta ?? 'none')
     } catch (err) {
       console.error('Error cargando ranking de desempate:', err)
       setErrorPostulantes('No se pudo cargar el ranking de desempate. Intente nuevamente.')
@@ -59,11 +61,11 @@ export function FiltroDesempate() {
     const init = async () => {
       try {
         const saved = await getCriterioDesempateConfig()
-        const criterioInicial = saved ?? 'fecha'
-        setCriterioSeleccionado(criterioInicial)
+        const criterioInicial = saved ?? null
+        setCriterioSeleccionado(criterioInicial ?? 'none')
         await cargarRanking(criterioInicial)
       } catch {
-        await cargarRanking('fecha')
+        await cargarRanking(null)
       }
     }
     void init()
@@ -106,11 +108,30 @@ export function FiltroDesempate() {
   async function handleAplicarCriterio() {
     setGuardandoCriterio(true)
     try {
-      await setCriterioDesempateConfig(criterioSeleccionado)
-      await cargarRanking(criterioSeleccionado)
+      if (criterioSeleccionado === 'none') {
+        await clearCriterioDesempateConfig()
+        await cargarRanking(null)
+      } else {
+        await setCriterioDesempateConfig(criterioSeleccionado)
+        await cargarRanking(criterioSeleccionado)
+      }
     } catch (err) {
       console.error('Error aplicando criterio:', err)
       alert('No se pudo aplicar el criterio de desempate.')
+    } finally {
+      setGuardandoCriterio(false)
+    }
+  }
+
+  async function handleResetFiltros() {
+    setGuardandoCriterio(true)
+    try {
+      await clearCriterioDesempateConfig()
+      setCriterioSeleccionado('none')
+      await cargarRanking(null)
+    } catch (err) {
+      console.error('Error reseteando filtros:', err)
+      alert('No se pudo resetear el filtro de desempate.')
     } finally {
       setGuardandoCriterio(false)
     }
@@ -221,7 +242,7 @@ export function FiltroDesempate() {
                 </label>
                 <select
                   value={criterioSeleccionado}
-                  onChange={(e) => setCriterioSeleccionado(e.target.value as CriterioDesempate)}
+                  onChange={(e) => setCriterioSeleccionado(e.target.value as CriterioDesempate | 'none')}
                   className="w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm text-slate-900 focus:outline-none focus:ring-1 focus:ring-blue-500"
                 >
                   {CRITERIOS_ACUMULABLES.map((c) => (
@@ -237,6 +258,13 @@ export function FiltroDesempate() {
                 className="rounded-lg bg-blue-700 px-4 py-2 text-xs font-semibold text-white shadow-sm hover:bg-blue-800 disabled:cursor-not-allowed disabled:opacity-50"
               >
                 {guardandoCriterio ? 'Aplicando...' : 'Aplicar filtro'}
+              </button>
+              <button
+                onClick={() => { void handleResetFiltros() }}
+                disabled={guardandoCriterio || loading}
+                className="rounded-lg border border-slate-300 bg-white px-4 py-2 text-xs font-semibold text-slate-700 shadow-sm hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-50"
+              >
+                Resetear filtros
               </button>
             </div>
             <div className="rounded-lg border border-emerald-200 bg-emerald-50 px-3 py-2">
@@ -261,7 +289,7 @@ export function FiltroDesempate() {
             </div>
             <div className="flex flex-wrap gap-2">
               <button
-                onClick={() => { void cargarRanking(criterioSeleccionado) }}
+                onClick={() => { void cargarRanking(criterioSeleccionado === 'none' ? null : criterioSeleccionado) }}
                 disabled={loading}
                 className="flex items-center gap-1.5 rounded-lg border border-slate-300 bg-white px-3 py-2 text-xs font-semibold text-slate-700 shadow-sm hover:bg-slate-50 disabled:opacity-50"
               >
@@ -298,7 +326,7 @@ export function FiltroDesempate() {
                   <p className="text-sm font-semibold text-red-800">Error al cargar los datos</p>
                   <p className="mt-0.5 text-sm text-red-700">{errorPostulantes}</p>
                 </div>
-                <button onClick={() => { void cargarRanking(criterioSeleccionado) }} className="shrink-0 rounded-lg border border-red-300 bg-white px-3 py-1.5 text-xs font-semibold text-red-700 hover:bg-red-50">
+                <button onClick={() => { void cargarRanking(criterioSeleccionado === 'none' ? null : criterioSeleccionado) }} className="shrink-0 rounded-lg border border-red-300 bg-white px-3 py-1.5 text-xs font-semibold text-red-700 hover:bg-red-50">
                   Reintentar
                 </button>
               </div>
