@@ -3,83 +3,11 @@ import { useAdminFilter } from '../../contexts/AdminFilterContext'
 import { AdminLayout } from './AdminLayout'
 import { exportarExcel } from '../../services/excelExport'
 import { descargarTodosDocumentos } from '../../services/zipDownload'
-import {
-  getCriterioDesempateConfig,
-  setCriterioDesempateConfig,
-  clearCriterioDesempateConfig,
-  type CriterioDesempate,
-} from '../../services/filtroConfigService'
 import type { PostulanteFirestore } from '../../types/postulante'
 import { formatDate } from '../../utils/inputFormatters'
 import { resumenCuentaBancariaListado } from '../../utils/cuentaBancariaDisplay'
 import { ZipDownloadBriefNotice } from './ZipDownloadBriefNotice'
-
-// ── Lógica de ordenamiento por desempate ─────────────────────────────────────
-
-const ORDEN_ESTANDAR: CriterioDesempate[] = ['nem', 'rsh', 'enfermedad', 'hermanos', 'fecha']
-
-function compararCriterio(a: PostulanteFirestore, b: PostulanteFirestore, c: CriterioDesempate): number {
-  if (c === 'fecha') {
-    // Postulación más antigua primero (menor createdAt gana)
-    return (a.createdAt || '').localeCompare(b.createdAt || '')
-  }
-
-  const puntosA = a.puntaje?.[c] || 0
-  const puntosB = b.puntaje?.[c] || 0
-
-  if (puntosA !== puntosB) {
-    // A mayor puntaje en la categoría, mejor ranking
-    return puntosB - puntosA
-  }
-
-  // SI LOS PUNTOS SON IGUALES, DESEMPATAMOS POR VALOR REAL (si aplica)
-  if (c === 'nem') {
-    // NEM real (6.8 vs 6.6)
-    return (parseFloat(b.nem) || 0) - (parseFloat(a.nem) || 0)
-  }
-
-  if (c === 'rsh') {
-    // RSH real (40% vs 50%). El % menor es más vulnerable, por ende mejor ranking.
-    const valA = parseInt(a.tramoRegistroSocial) || 100
-    const valB = parseInt(b.tramoRegistroSocial) || 100
-    return valA - valB
-  }
-
-  return 0
-}
-
-function sortByDesempate(
-  list: PostulanteFirestore[],
-  criterio: CriterioDesempate | null,
-): PostulanteFirestore[] {
-  const orden = criterio ? [criterio, ...ORDEN_ESTANDAR.filter((c) => c !== criterio)] : ORDEN_ESTANDAR
-  return [...list].sort((a, b) => {
-    // 1. Siempre manda el Puntaje Total
-    const diffTotal = (b.puntaje?.total || 0) - (a.puntaje?.total || 0)
-    if (diffTotal !== 0) return diffTotal
-
-    // 2. Si empatan en Puntaje Total, aplicamos el orden de desempate
-    for (const c of orden) {
-      const diff = compararCriterio(a, b, c)
-      if (diff !== 0) return diff
-    }
-    return 0
-  })
-}
-
-// ── Helpers de UI ─────────────────────────────────────────────────────────────
-
-const CRITERIOS: { value: CriterioDesempate; label: string }[] = [
-  { value: 'nem', label: '1. Rendimiento escolar (NEM)' },
-  { value: 'rsh', label: '2. Tramo Registro Social de Hogares' },
-  { value: 'enfermedad', label: '3. Enfermedad catastrófica y/o crónica' },
-  { value: 'hermanos', label: '4. Hermanos y/o hijos estudiando' },
-  { value: 'fecha', label: '5. Fecha y hora de postulación (más antigua primero)' },
-]
-
-function criterioLabel(c: CriterioDesempate): string {
-  return CRITERIOS.find((x) => x.value === c)?.label ?? c
-}
+import { obtenerRankingDesempate } from '../../services/desempateService'
 
 const TD = 'px-3 py-2 text-xs text-slate-700 whitespace-nowrap border-b border-slate-100'
 const TH = 'px-3 py-2.5 text-left text-[10px] font-bold uppercase tracking-widest text-slate-500 whitespace-nowrap bg-slate-50 border-b border-slate-200'
@@ -87,37 +15,34 @@ const TH = 'px-3 py-2.5 text-left text-[10px] font-bold uppercase tracking-wides
 // ── Componente principal ──────────────────────────────────────────────────────
 
 export function FiltroDesempate() {
-  const { postulantesFiltrados, puntajeAplicado, loading, errorPostulantes, refrescarPostulantes } =
-    useAdminFilter()
-
-  const [criterioSeleccionado, setCriterioSeleccionado] = useState<CriterioDesempate>('nem')
-  const [criterioActivo, setCriterioActivo] = useState<CriterioDesempate | null>(null)
-  const [guardandoCriterio, setGuardandoCriterio] = useState(false)
-  const [quitandoCriterio, setQuitandoCriterio] = useState(false)
+  const { refrescarPostulantes } = useAdminFilter()
+  const [listaOrdenada, setListaOrdenada] = useState<PostulanteFirestore[]>([])
+  const [puntajeAplicado, setPuntajeAplicado] = useState<number | null>(null)
+  const [loading, setLoading] = useState(true)
+  const [errorPostulantes, setErrorPostulantes] = useState<string | null>(null)
   const [avisoZipTick, setAvisoZipTick] = useState(0)
   const [exportando, setExportando] = useState<string | null>(null)
   const scrollRef = useRef<HTMLDivElement>(null)
 
-  // Cargar criterio persistido al montar
+  const cargarRanking = async () => {
+    setLoading(true)
+    setErrorPostulantes(null)
+    try {
+      await refrescarPostulantes()
+      const data = await obtenerRankingDesempate()
+      setPuntajeAplicado(data.puntajeAplicado)
+      setListaOrdenada(data.postulantes)
+    } catch (err) {
+      console.error('Error cargando ranking de desempate:', err)
+      setErrorPostulantes('No se pudo cargar el ranking de desempate. Intente nuevamente.')
+    } finally {
+      setLoading(false)
+    }
+  }
+
   useEffect(() => {
-    getCriterioDesempateConfig().then((criterio) => {
-      if (criterio) {
-        setCriterioActivo(criterio)
-        setCriterioSeleccionado(criterio)
-      }
-    }).catch(console.error)
+    void cargarRanking()
   }, [])
-
-  // Entrada: salida del filtro por puntaje (solo tras aplicar umbral en servidor sobre documentación validada)
-  const validados = useMemo(() => {
-    if (puntajeAplicado == null) return []
-    return postulantesFiltrados.filter(
-      (p) => p.estado === 'documentacion_validada' || p.estado === 'aprobado',
-    )
-  }, [postulantesFiltrados, puntajeAplicado])
-
-  // Lista ordenada según criterio activo (siempre se ordena por total de mayor a menor, y usa desempate)
-  const listaOrdenada = sortByDesempate(validados, criterioActivo)
 
   // Detectar y agrupar empates
   const empatesDetectados = useMemo(() => {
@@ -140,33 +65,6 @@ export function FiltroDesempate() {
     // Ordenar de mayor a menor puntaje para mostrarlos de forma más lógica
     return result.sort((a, b) => b.puntaje - a.puntaje)
   }, [listaOrdenada])
-
-  async function handleEstablecerCriterio() {
-    setGuardandoCriterio(true)
-    try {
-      await setCriterioDesempateConfig(criterioSeleccionado)
-      setCriterioActivo(criterioSeleccionado)
-    } catch (err) {
-      console.error('Error guardando criterio:', err)
-      alert('Error al guardar el criterio. Intente nuevamente.')
-    } finally {
-      setGuardandoCriterio(false)
-    }
-  }
-
-  async function handleQuitarCriterio() {
-    setQuitandoCriterio(true)
-    try {
-      await clearCriterioDesempateConfig()
-      setCriterioActivo(null)
-      setCriterioSeleccionado('nem')
-    } catch (err) {
-      console.error('Error quitando criterio:', err)
-      alert('Error al quitar el criterio. Intente nuevamente.')
-    } finally {
-      setQuitandoCriterio(false)
-    }
-  }
 
   async function handleExportExcel() {
     setExportando('excel')
@@ -207,11 +105,9 @@ export function FiltroDesempate() {
               <p className="mt-1 text-xs text-blue-800 leading-relaxed">
                 Entran aquí <strong>todos</strong> los postulantes que cumplieron <strong>documentación validada</strong> y el{' '}
                 <strong>filtro por puntaje total</strong> vigente en el servidor — <strong>sin tope de cantidad</strong>{' '}
-                (pueden ser 200, 300, 400 o los que correspondan). La tabla muestra el <strong>ranking</strong>: primero por{' '}
-                <strong>puntaje total de mayor a menor</strong>; si hay empate en el total, se aplica la cadena de desempate
-                (por defecto <strong>NEM → RSH → Condición médica → Hermanos/hijos → Fecha de postulación</strong>). Al pulsar{' '}
-                <strong>Establecer criterio</strong>, el criterio elegido pasa a ser el primero en esa cadena y el orden se{' '}
-                <strong>vuelve a calcular</strong> sobre toda la nómina de esta etapa.
+                (pueden ser 200, 300, 400 o los que correspondan). La tabla muestra el <strong>ranking oficial</strong> calculado
+                en backend con cadena fija y acumulable:
+                <strong> puntaje total ↓ → NEM ↓ → RSH ↑ → condición médica → hermanos/hijos → fecha/hora de postulación ↑</strong>.
               </p>
             </div>
           </div>
@@ -278,60 +174,14 @@ export function FiltroDesempate() {
             </div>
           )}
 
-          {/* Panel de criterio de desempate */}
+          {/* Criterios aplicados en backend */}
           <div className="rounded-xl border border-slate-200 bg-white p-5 shadow-sm space-y-4">
-            <div className="flex flex-wrap items-end gap-4">
-              <div className="flex flex-col gap-1 min-w-[280px]">
-                <label className="text-[10px] font-bold uppercase tracking-widest text-slate-500">
-                  Criterio principal de desempate
-                </label>
-                <select
-                  value={criterioSeleccionado}
-                  onChange={(e) => setCriterioSeleccionado(e.target.value as CriterioDesempate)}
-                  className="rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm text-slate-900 focus:outline-none focus:ring-1 focus:ring-blue-500"
-                >
-                  {CRITERIOS.map((c) => (
-                    <option key={c.value} value={c.value}>{c.label}</option>
-                  ))}
-                </select>
-              </div>
-
-              <button
-                onClick={handleEstablecerCriterio}
-                disabled={guardandoCriterio || criterioActivo === criterioSeleccionado}
-                className="rounded-lg bg-blue-700 px-4 py-2 text-xs font-semibold text-white shadow-sm hover:bg-blue-800 disabled:opacity-50 disabled:cursor-not-allowed"
-              >
-                {guardandoCriterio ? 'Guardando...' : 'Establecer criterio'}
-              </button>
-
-              {criterioActivo && (
-                <button
-                  onClick={handleQuitarCriterio}
-                  disabled={quitandoCriterio}
-                  className="rounded-lg border border-slate-300 bg-white px-4 py-2 text-xs font-semibold text-slate-700 shadow-sm hover:bg-slate-50 disabled:opacity-50"
-                >
-                  {quitandoCriterio ? 'Quitando...' : 'Quitar criterio'}
-                </button>
-              )}
+            <div className="rounded-lg border border-emerald-200 bg-emerald-50 px-3 py-2">
+              <p className="text-xs text-emerald-800">
+                <span className="font-bold">Orden aplicado:</span> 1) Puntaje total (desc) · 2) NEM (desc) · 3) RSH (asc) ·
+                4) Enfermedad catastrófica/crónica · 5) Hermanos/hijos estudiando · 6) Fecha/hora de postulación (más antigua primero).
+              </p>
             </div>
-
-            {criterioActivo ? (
-              <div className="flex items-center gap-2 rounded-lg border border-emerald-200 bg-emerald-50 px-3 py-2">
-                <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4 text-emerald-600 shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
-                  <path strokeLinecap="round" strokeLinejoin="round" d="M5 13l4 4L19 7" />
-                </svg>
-                <p className="text-xs text-emerald-800">
-                  <span className="font-bold">Criterio activo:</span> {criterioLabel(criterioActivo)} — orden completo: {[criterioActivo, ...ORDEN_ESTANDAR.filter(c => c !== criterioActivo)].map(c => criterioLabel(c).split('. ')[1]).join(' → ')}{' → Fecha de postulación'}
-                </p>
-              </div>
-            ) : (
-              <div className="flex items-center gap-2 rounded-lg border border-amber-200 bg-amber-50 px-3 py-2">
-                <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4 text-amber-600 shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
-                  <path strokeLinecap="round" strokeLinejoin="round" d="M12 9v2m0 4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
-                </svg>
-                <p className="text-xs text-amber-800">Sin criterio establecido. Seleccione un criterio y presione <strong>"Establecer criterio"</strong> para fijar el orden de desempate.</p>
-              </div>
-            )}
           </div>
 
           {/* Acciones y conteo */}
@@ -348,7 +198,7 @@ export function FiltroDesempate() {
             </div>
             <div className="flex flex-wrap gap-2">
               <button
-                onClick={refrescarPostulantes}
+                onClick={() => { void cargarRanking() }}
                 disabled={loading}
                 className="flex items-center gap-1.5 rounded-lg border border-slate-300 bg-white px-3 py-2 text-xs font-semibold text-slate-700 shadow-sm hover:bg-slate-50 disabled:opacity-50"
               >
@@ -460,9 +310,10 @@ export function FiltroDesempate() {
                     <tbody>
                       {listaOrdenada.map((p, idx) => {
                         const pos = idx + 1
+                        const isTop150 = pos <= 150
                         return (
-                          <tr key={p.id} className="group transition-colors hover:bg-slate-50">
-                            <td className="sticky left-0 z-10 border-r border-slate-200 bg-white px-2 py-2 text-center text-sm font-bold text-slate-700 border-b border-slate-100 group-hover:bg-slate-50">
+                          <tr key={p.id} className={`group transition-colors hover:bg-slate-50 ${isTop150 ? 'bg-emerald-50/40' : ''}`}>
+                            <td className={`sticky left-0 z-10 border-r border-slate-200 px-2 py-2 text-center text-sm font-bold text-slate-700 border-b border-slate-100 group-hover:bg-slate-50 ${isTop150 ? 'bg-emerald-50/70' : 'bg-white'}`}>
                               {pos}
                             </td>
                             <td className={TD}>{p.nombres}</td>
@@ -510,8 +361,8 @@ export function FiltroDesempate() {
 
                 <div className="border-t border-slate-200 px-4 py-3 text-[10px] text-slate-500">
                   La columna # es el ranking definitivo de esta etapa: orden decreciente por puntaje total; empates resueltos
-                  con los criterios de desempate (pulse <strong className="text-slate-600">Establecer criterio</strong> para
-                  fijar cuál se evalúa primero entre quienes empatan en puntaje total).
+                  con la cadena fija de desempate calculada en backend. Las filas destacadas en verde corresponden al
+                  Top 150.
                 </div>
               </>
             )}

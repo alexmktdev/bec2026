@@ -566,6 +566,44 @@ export const obtenerPostulantesRevisor = onCall(
 /** Umbrales permitidos para el filtro de puntaje (misma grilla que el panel). */
 const UMBRALES_PUNTAJE_ADMIN = new Set([30, 40, 50, 60, 70, 80])
 
+function parseNemValue(raw: unknown): number {
+  const v = typeof raw === 'number' ? raw : parseFloat(String(raw ?? '').replace(',', '.'))
+  return Number.isFinite(v) ? v : -1
+}
+
+function parseRshValue(raw: unknown): number {
+  const parsed = parseInt(String(raw ?? '').replace(/[^\d]/g, ''), 10)
+  return Number.isFinite(parsed) ? parsed : 999
+}
+
+function diseasePriority(raw: Record<string, unknown>): number {
+  const cat = String(raw.enfermedadCatastrofica ?? '').toLowerCase() === 'si'
+  const cron = String(raw.enfermedadCronica ?? '').toLowerCase() === 'si'
+  if (cat && cron) return 3
+  if (cat) return 2
+  if (cron) return 1
+  return 0
+}
+
+function siblingsPriority(raw: Record<string, unknown>): number {
+  const twoOrMore = String(raw.tieneDosOMasHermanosOHijosEstudiando ?? '').toLowerCase() === 'si'
+  const one = String(raw.tieneUnHermanOHijoEstudiando ?? '').toLowerCase() === 'si'
+  if (twoOrMore) return 2
+  if (one) return 1
+  return 0
+}
+
+function registrationTimestamp(raw: Record<string, unknown>): number {
+  const fecha = String(raw.fechaPostulacion ?? '').trim()
+  const hora = String(raw.horaPostulacion ?? '').trim() || '00:00:00'
+  const isoLike = fecha ? `${fecha}T${hora}` : ''
+  const fromForm = isoLike ? Date.parse(isoLike) : NaN
+  if (Number.isFinite(fromForm)) return fromForm
+  const fromCreatedAt = Date.parse(String(raw.createdAt ?? ''))
+  if (Number.isFinite(fromCreatedAt)) return fromCreatedAt
+  return Number.MAX_SAFE_INTEGER
+}
+
 /**
  * Aplica el filtro por puntaje total solo sobre postulantes con documentación validada.
  * Persiste `config/filtro_puntaje`. Solo superadmin (el cliente ya no escribe ese doc).
@@ -634,6 +672,81 @@ export const limpiarFiltroPuntajeAdmin = onCall(
     } catch (e: unknown) {
       console.error('Error limpiarFiltroPuntajeAdmin:', e)
       throw new HttpsError('internal', 'No se pudo limpiar el filtro de puntaje.')
+    }
+  },
+)
+
+/**
+ * Ranking de desempate calculado en backend (sin depender de filtros locales en frontend).
+ * Cadena fija:
+ * 1) Puntaje total (desc) → 2) NEM real (desc) → 3) RSH real (asc)
+ * 4) Enfermedad (cat+cron, cat, cron, ninguna) → 5) Hermanos/Hijos (2+,1,0)
+ * 6) Fecha/hora de postulación (más antigua primero)
+ */
+export const obtenerRankingDesempateAdmin = onCall(
+  { ...webCallableBase(), memory: '512MiB', timeoutSeconds: 60, maxInstances: 10 },
+  async (request) => {
+    const callerUid = request.auth?.uid
+    if (!callerUid) throw new HttpsError('unauthenticated', 'Debe iniciar sesión.')
+
+    const db = admin.firestore()
+    await assertRevisorOrAdmin(callerUid, db, request.auth?.token?.email)
+
+    try {
+      const filtroSnap = await db.collection('config').doc('filtro_puntaje').get()
+      const puntajeAplicadoRaw = filtroSnap.data()?.puntajeAplicado
+      const puntajeAplicado =
+        typeof puntajeAplicadoRaw === 'number' && Number.isFinite(puntajeAplicadoRaw)
+          ? puntajeAplicadoRaw
+          : null
+
+      if (puntajeAplicado == null) {
+        return { postulantes: [], puntajeAplicado: null }
+      }
+
+      const snapshot = await db.collection('postulantes').get()
+      const postulantesBase = snapshot.docs.map((d) => ({ id: d.id, ...d.data() as Record<string, unknown> }))
+
+      const elegibles = postulantesBase.filter((p) => {
+        const estado = String(p.estado ?? '')
+        if (estado !== 'documentacion_validada' && estado !== 'aprobado') return false
+        const puntaje = calcularPuntajeTotal(p as unknown as PostulanteData)
+        return (puntaje.total ?? 0) >= puntajeAplicado
+      })
+
+      const ranking = [...elegibles].sort((a, b) => {
+        const totalA = calcularPuntajeTotal(a as unknown as PostulanteData).total ?? 0
+        const totalB = calcularPuntajeTotal(b as unknown as PostulanteData).total ?? 0
+        if (totalA !== totalB) return totalB - totalA
+
+        const nemA = parseNemValue(a.nem)
+        const nemB = parseNemValue(b.nem)
+        if (nemA !== nemB) return nemB - nemA
+
+        const rshA = parseRshValue(a.tramoRegistroSocial)
+        const rshB = parseRshValue(b.tramoRegistroSocial)
+        if (rshA !== rshB) return rshA - rshB
+
+        const diseaseA = diseasePriority(a)
+        const diseaseB = diseasePriority(b)
+        if (diseaseA !== diseaseB) return diseaseB - diseaseA
+
+        const siblingsA = siblingsPriority(a)
+        const siblingsB = siblingsPriority(b)
+        if (siblingsA !== siblingsB) return siblingsB - siblingsA
+
+        const dateA = registrationTimestamp(a)
+        const dateB = registrationTimestamp(b)
+        if (dateA !== dateB) return dateA - dateB
+
+        return String(a.id).localeCompare(String(b.id))
+      })
+
+      return { postulantes: ranking, puntajeAplicado }
+    } catch (e: unknown) {
+      console.error('Error obtenerRankingDesempateAdmin:', e)
+      if (e instanceof HttpsError) throw e
+      throw new HttpsError('internal', 'No se pudo calcular el ranking de desempate.')
     }
   },
 )
