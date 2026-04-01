@@ -1,8 +1,11 @@
 import { useEffect, useMemo, useState } from 'react'
 import { AdminLayout } from './AdminLayout'
+import { TablePagination } from './TablePagination'
 import type { PostulanteRechazadoEntrada } from '../../types/postulante'
 import { obtenerPostulantesRechazadosEntrada } from '../../services/rechazosEntradaService'
 import { formatDateTimeDmyHm } from '../../utils/inputFormatters'
+
+const ITEMS_PER_PAGE = 10
 
 function Cell({
   value,
@@ -22,6 +25,7 @@ export function PostulantesRechazadosEntrada() {
   const [rows, setRows] = useState<PostulanteRechazadoEntrada[]>([])
   const [loading, setLoading] = useState(true)
   const [q, setQ] = useState('')
+  const [pagina, setPagina] = useState(1)
   const [error, setError] = useState<string | null>(null)
 
   useEffect(() => {
@@ -42,6 +46,17 @@ export function PostulantesRechazadosEntrada() {
     )
   }, [q, rows])
 
+  const paginaFilas = useMemo(() => {
+    const start = (pagina - 1) * ITEMS_PER_PAGE
+    return filtered.slice(start, start + ITEMS_PER_PAGE)
+  }, [filtered, pagina])
+
+  const totalPaginas = Math.max(1, Math.ceil(filtered.length / ITEMS_PER_PAGE))
+
+  useEffect(() => {
+    if (pagina > totalPaginas) setPagina(totalPaginas)
+  }, [pagina, totalPaginas])
+
   return (
     <AdminLayout>
       <div className="flex-1 w-full px-4 py-8 sm:px-6 lg:px-8 space-y-4 max-w-[1700px] mx-auto">
@@ -60,7 +75,10 @@ export function PostulantesRechazadosEntrada() {
             autoComplete="off"
             aria-label="Buscar rechazados por nombre, RUT o motivo"
             value={q}
-            onChange={(e) => setQ(e.target.value)}
+            onChange={(e) => {
+              setQ(e.target.value)
+              setPagina(1)
+            }}
             placeholder="Buscar por nombre, RUT o motivo..."
             className="w-full max-w-md rounded-lg border border-slate-300 px-3 py-2 text-sm"
           />
@@ -99,7 +117,7 @@ export function PostulantesRechazadosEntrada() {
                 </tr>
               </thead>
               <tbody className="divide-y divide-slate-100">
-                {filtered.map((r) => (
+                {paginaFilas.map((r) => (
                   <tr key={r.id ?? r.rutNormalizado}>
                     <Cell value={`${r.nombres} ${r.apellidoPaterno} ${r.apellidoMaterno}`} />
                     <Cell value={r.rut} rejected={r.rejectionFlags.historical || r.rejectionFlags.duplicate} />
@@ -134,6 +152,12 @@ export function PostulantesRechazadosEntrada() {
                 ))}
               </tbody>
             </table>
+            <TablePagination
+              totalItems={filtered.length}
+              itemsPerPage={ITEMS_PER_PAGE}
+              currentPage={pagina}
+              onPageChange={setPagina}
+            />
           </div>
         )}
       </div>

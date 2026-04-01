@@ -1,19 +1,43 @@
 /**
- * Script para crear 10 postulantes de prueba con todos sus datos y documentos.
+ * Script para crear 30 postulantes de prueba con todos sus datos y documentos.
+ * Cada ejecución elige datos distintos al azar (nombres, apellidos, emails únicos, etc.);
+ * los RUT también son nuevos en cada corrida.
  *
  * Requisitos que cumple cada postulante:
  * - RUT válido (formato chileno con dígito verificador correcto)
  * - Edad entre 17 y 23 años
  * - NEM >= 5.5
- * - No está en base histórica (usa RUTs nuevos)
  * - Documentos: identidad, matricula, rsh, nem (+ hermanos/medico según datos)
  *
  * Uso:
- *   1. Colocar serviceAccountKey.json en la raíz del proyecto
+ *   1. Colocar serviceAccountKey.json en la raíz del proyecto (debe estar en .gitignore)
  *   2. Ejecutar: npx tsx src/scripts/seedPostulantes.ts
  *
  * Nota: Usa Firebase Admin SDK. Los RUTs se generan con dígito verificador válido.
  */
+
+/** Cantidad fija por ejecución (lotes de prueba). */
+const CANTIDAD_POSTULANTES_SEED = 30
+
+function randomItem<T>(arr: readonly T[]): T {
+  return arr[Math.floor(Math.random() * arr.length)] as T
+}
+
+/** Muestra de tamaño `count`; sin repetir mientras haya suficientes elementos en `source`. */
+function sampleWithOptionalRepeat<T>(source: readonly T[], count: number): T[] {
+  const pool = [...source]
+  const out: T[] = []
+  for (let k = 0; k < count; k++) {
+    if (pool.length === 0) {
+      out.push(randomItem(source))
+      continue
+    }
+    const idx = Math.floor(Math.random() * pool.length)
+    out.push(pool[idx] as T)
+    pool.splice(idx, 1)
+  }
+  return out
+}
 
 import { PDFDocument } from 'pdf-lib'
 import { initializeApp, cert } from 'firebase-admin/app'
@@ -135,6 +159,16 @@ const NOMBRES = [
   'Francisca Belén',
   'Matías Nicolás',
   'Isidora Paz',
+  'Tomás Alonso',
+  'Valentina Sofía',
+  'Benjamín Esteban',
+  'Amanda Josefa',
+  'Lucas Vicente',
+  'Emilia Antonia',
+  'Maximiliano Raúl',
+  'Catalina Ignacia',
+  'Nicolás Felipe',
+  'Javiera Constanza',
 ]
 const APELLIDOS_P = [
   'González',
@@ -147,6 +181,16 @@ const APELLIDOS_P = [
   'Silva',
   'Martínez',
   'Sepúlveda',
+  'Fuentes',
+  'Castro',
+  'Vargas',
+  'Tapia',
+  'Núñez',
+  'Jiménez',
+  'Ruiz',
+  'Moreno',
+  'Herrera',
+  'Campos',
 ]
 const APELLIDOS_M = [
   'López',
@@ -159,6 +203,16 @@ const APELLIDOS_M = [
   'Díaz',
   'Reyes',
   'Morales',
+  'Araya',
+  'Peña',
+  'Cortés',
+  'Figueroa',
+  'Riquelme',
+  'Espinoza',
+  'Valenzuela',
+  'Cárdenas',
+  'Oyarzún',
+  'Pizarro',
 ]
 const INSTITUCIONES = [
   'Universidad de Chile',
@@ -166,6 +220,11 @@ const INSTITUCIONES = [
   'Universidad de Concepción',
   'Universidad de Valparaíso',
   'Universidad Técnica Federico Santa María',
+  'Universidad de Santiago',
+  'Universidad Austral de Chile',
+  'Universidad Católica del Norte',
+  'Universidad de La Frontera',
+  'Instituto Profesional DUOC UC',
 ]
 const CARRERAS = [
   'Ingeniería Civil',
@@ -176,6 +235,36 @@ const CARRERAS = [
   'Administración de Empresas',
   'Contador Auditor',
   'Pedagogía en Historia',
+  'Ingeniería Comercial',
+  'Kinesiología',
+  'Trabajo Social',
+  'Periodismo',
+  'Informática',
+  'Arquitectura',
+]
+const COMUNAS = [
+  'Santiago',
+  'Providencia',
+  'Ñuñoa',
+  'La Florida',
+  'Maipú',
+  'Puente Alto',
+  'Las Condes',
+  'Valparaíso',
+  'Viña del Mar',
+  'Concepción',
+]
+const CALLES = [
+  'Av. Libertador',
+  'Calle Los Aromos',
+  'Pasaje Las Violetas',
+  'Av. Matta',
+  'Diagonal Paraguay',
+  'Los Leones',
+  'Irarrázaval',
+  'Gran Avenida',
+  'Teniente Cruz',
+  'Vicuña Mackenna',
 ]
 
 interface PostulanteSeed {
@@ -184,10 +273,15 @@ interface PostulanteSeed {
   documentUrls: Record<string, string>
 }
 
-async function crearPostulanteSeed(index: number): Promise<PostulanteSeed> {
+type PerfilFijoLote = {
+  nombres: string
+  apellidoPaterno: string
+  apellidoMaterno: string
+  email: string
+}
+
+async function crearPostulanteSeed(perfil: PerfilFijoLote): Promise<PostulanteSeed> {
   const rut = generarRutValido()
-  // eslint-disable-next-line @typescript-eslint/no-unused-vars
-  void normalizeRut(rut) // warming-up para main()
   const edad = 17 + Math.floor(Math.random() * 7) // 17-23
   const añoNac = new Date().getFullYear() - edad
   const mes = String(1 + Math.floor(Math.random() * 12)).padStart(2, '0')
@@ -202,36 +296,44 @@ async function crearPostulanteSeed(index: number): Promise<PostulanteSeed> {
   const tieneUnHijo = tieneHermanos === 'Si' && Math.random() > 0.5 ? 'Si' : 'No'
   const tieneDosOMas = tieneHermanos === 'Si' && Math.random() > 0.6 ? 'Si' : 'No'
   const enfermedadCat = Math.random() > 0.85 ? 'Si' : 'No'
-  const enfermedadCron = Math.random() > 0.9 ? 'Si' : 'No'
+  const enfermedadCron = enfermedadCat === 'Si' ? 'No' : Math.random() > 0.9 ? 'Si' : 'No'
 
   const tramoOpciones = ['40%', '50%', '60%', '70%', '80%'] as const
-  const tramo = tramoOpciones[Math.floor(Math.random() * tramoOpciones.length)]
+  const tramo = randomItem(tramoOpciones)
 
   const hoy = new Date()
+  hoy.setMinutes(hoy.getMinutes() - Math.floor(Math.random() * 120))
   const fechaPost = hoy.toISOString().slice(0, 10).split('-').reverse().join('-')
-  const horaPost = hoy.toTimeString().slice(0, 8)
+  const hh = String(hoy.getHours()).padStart(2, '0')
+  const mm = String(hoy.getMinutes()).padStart(2, '0')
+  const ss = String(hoy.getSeconds()).padStart(2, '0')
+  const horaPost = `${hh}:${mm}:${ss}`
+
+  const comuna = randomItem(COMUNAS)
+  const calle = randomItem(CALLES)
+  const nCalle = 100 + Math.floor(Math.random() * 3800)
 
   const data: Record<string, string | boolean> = {
-    nombres: NOMBRES[index],
-    apellidoPaterno: APELLIDOS_P[index],
-    apellidoMaterno: APELLIDOS_M[index],
+    nombres: perfil.nombres,
+    apellidoPaterno: perfil.apellidoPaterno,
+    apellidoMaterno: perfil.apellidoMaterno,
     rut,
     fechaNacimiento,
     edad: String(edad),
-    sexo: index % 2 === 0 ? 'Masculino' : 'Femenino',
-    estadoCivil: 'Soltero',
-    telefono: `+56${9}${Math.floor(10000000 + Math.random() * 90000000)}`,
-    email: `postulante${index + 1}.test@ejemplo.cl`,
-    domicilioFamiliar: `Av. Principal ${100 + index * 10}, Santiago`,
+    sexo: Math.random() > 0.5 ? 'Masculino' : 'Femenino',
+    estadoCivil: randomItem(['Soltero', 'Soltero', 'Casado'] as const),
+    telefono: `+569${String(Math.floor(10000000 + Math.random() * 90000000))}`,
+    email: perfil.email,
+    domicilioFamiliar: `${calle} ${nCalle}, ${comuna}`,
     fechaPostulacion: fechaPost,
     horaPostulacion: horaPost,
     nem,
-    nombreInstitucion: INSTITUCIONES[index % INSTITUCIONES.length],
-    comuna: 'Santiago',
-    carrera: CARRERAS[index % CARRERAS.length],
-    duracionSemestres: '10',
+    nombreInstitucion: randomItem(INSTITUCIONES),
+    comuna,
+    carrera: randomItem(CARRERAS),
+    duracionSemestres: randomItem(['8', '10', '12'] as const),
     anoIngreso: '2026',
-    totalIntegrantes: '4',
+    totalIntegrantes: String(3 + Math.floor(Math.random() * 5)),
     tramoRegistroSocial: tramo,
     tieneHermanosOHijosEstudiando: tieneHermanos,
     tieneUnHermanOHijoEstudiando: tieneUnHijo,
@@ -239,7 +341,7 @@ async function crearPostulanteSeed(index: number): Promise<PostulanteSeed> {
     enfermedadCatastrofica: enfermedadCat,
     enfermedadCronica: enfermedadCron,
     tipoCuentaBancaria: 'cuenta_rut',
-    numeroCuenta: String(10000000 + index).padStart(8, '0'),
+    numeroCuenta: String(Math.floor(10_000_000 + Math.random() * 89_999_999)),
     rutCuenta: rut,
     otraNumeroCuenta: '',
     otraTipoCuenta: '',
@@ -310,10 +412,21 @@ function calcularPuntaje(data: Record<string, string | boolean>): {
 }
 
 async function main() {
-  console.log('Creando 10 postulantes de prueba...\n')
+  const runId = `${Date.now()}-${randomUUID().slice(0, 8)}`
+  console.log(`Creando ${CANTIDAD_POSTULANTES_SEED} postulantes de prueba (lote ${runId})...\n`)
 
-  for (let i = 0; i < 10; i++) {
-    const { data, documentosSubidos, documentUrls } = await crearPostulanteSeed(i)
+  const nombresLote = sampleWithOptionalRepeat(NOMBRES, CANTIDAD_POSTULANTES_SEED)
+  const apPatLote = sampleWithOptionalRepeat(APELLIDOS_P, CANTIDAD_POSTULANTES_SEED)
+  const apMatLote = sampleWithOptionalRepeat(APELLIDOS_M, CANTIDAD_POSTULANTES_SEED)
+
+  for (let i = 0; i < CANTIDAD_POSTULANTES_SEED; i++) {
+    const perfil: PerfilFijoLote = {
+      nombres: nombresLote[i] as string,
+      apellidoPaterno: apPatLote[i] as string,
+      apellidoMaterno: apMatLote[i] as string,
+      email: `seed.${runId}.${i + 1}@ejemplo-prueba.cl`,
+    }
+    const { data, documentosSubidos, documentUrls } = await crearPostulanteSeed(perfil)
     const puntaje = calcularPuntaje(data)
 
     const registro = {
@@ -334,7 +447,9 @@ async function main() {
     )
   }
 
-  console.log('\n¡Completado! 10 postulantes creados con documentos en Storage.')
+  console.log(
+    `\n¡Completado! ${CANTIDAD_POSTULANTES_SEED} postulantes creados con documentos en Storage.`,
+  )
 }
 
 main().catch((err) => {

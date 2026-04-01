@@ -59,6 +59,7 @@ functions/.env.*
 functions/.runtimeconfig.json
 
 # Firebase Admin / Google Cloud — claves privadas (nunca en Git)
+# Script seed: src/scripts/seedPostulantes.ts lee serviceAccountKey.json en la raíz del repo.
 serviceAccountKey.json
 *-firebase-adminsdk-*.json
 *-service-account*.json
