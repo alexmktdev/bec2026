@@ -1,6 +1,7 @@
 import './functionsInit'
 import { randomUUID } from 'node:crypto'
 import * as admin from 'firebase-admin'
+import { DocumentReference, GeoPoint, Timestamp } from 'firebase-admin/firestore'
 import { HttpsError, onCall } from 'firebase-functions/v2/https'
 import type {
   PostulanteData,
@@ -649,6 +650,39 @@ function registrationTimestamp(raw: Record<string, unknown>): number {
 }
 
 /**
+ * Las respuestas de onCall deben ser JSON puro. Los docs de Firestore traen Timestamp,
+ * GeoPoint, etc.; si no se convierten, el runtime puede fallar con error `internal`.
+ */
+function serializarParaCallable(data: unknown): unknown {
+  if (data === null || data === undefined) return null
+  const t = typeof data
+  if (t === 'string' || t === 'number' || t === 'boolean') return data
+  if (data instanceof Date) return data.toISOString()
+  if (data instanceof Timestamp) return data.toDate().toISOString()
+  if (data instanceof GeoPoint) return { latitude: data.latitude, longitude: data.longitude }
+  if (data instanceof DocumentReference) return data.path
+  if (Array.isArray(data)) return data.map(serializarParaCallable)
+  if (t !== 'object') return String(data)
+
+  const o = data as Record<string, unknown>
+  if (typeof o.toDate === 'function') {
+    try {
+      const d = (o as { toDate: () => Date }).toDate()
+      if (d instanceof Date && !Number.isNaN(d.getTime())) return d.toISOString()
+    } catch {
+      /* continuar como objeto */
+    }
+  }
+
+  const out: Record<string, unknown> = {}
+  for (const [k, v] of Object.entries(o)) {
+    if (v === undefined) continue
+    out[k] = serializarParaCallable(v)
+  }
+  return out
+}
+
+/**
  * Aplica el filtro por puntaje total solo sobre postulantes con documentación validada.
  * Persiste `config/filtro_puntaje`. Solo superadmin (el cliente ya no escribe ese doc).
  */
@@ -818,7 +852,9 @@ export const obtenerRankingDesempateAdmin = onCall(
 
       const empatesResumen = calcularEmpatesResumen(elegibles, criterioHasta)
 
-      return { postulantes: ranking, puntajeAplicado, criterioHasta, empatesResumen }
+      const postulantesJson = ranking.map((p) => serializarParaCallable(p) as Record<string, unknown>)
+
+      return { postulantes: postulantesJson, puntajeAplicado, criterioHasta, empatesResumen }
     } catch (e: unknown) {
       console.error('Error obtenerRankingDesempateAdmin:', e)
       if (e instanceof HttpsError) throw e

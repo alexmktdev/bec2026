@@ -77,7 +77,9 @@ export function FiltroDesempate() {
     setLoading(true)
     setErrorPostulantes(null)
     try {
-      await refrescarPostulantes()
+      // El ranking viene del servidor; refrescar el caché local no debe bloquear ni fallar la vista
+      // si Firestore del navegador tiene problemas de red (p. ej. QUIC).
+      void refrescarPostulantes()
       const data = await obtenerRankingDesempate(criterio)
       setPuntajeAplicado(data.puntajeAplicado)
       setListaOrdenada(data.postulantes)
