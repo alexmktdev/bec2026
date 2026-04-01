@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState, useMemo } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { useAdminFilter } from '../../contexts/AdminFilterContext'
 import { AdminLayout } from './AdminLayout'
 import { exportarExcel } from '../../services/excelExport'
@@ -7,7 +7,7 @@ import type { PostulanteFirestore } from '../../types/postulante'
 import { formatDate } from '../../utils/inputFormatters'
 import { resumenCuentaBancariaListado } from '../../utils/cuentaBancariaDisplay'
 import { ZipDownloadBriefNotice } from './ZipDownloadBriefNotice'
-import { obtenerRankingDesempate } from '../../services/desempateService'
+import { obtenerRankingDesempate, type EmpatesResumenDesempate } from '../../services/desempateService'
 import {
   getCriterioDesempateConfig,
   setCriterioDesempateConfig,
@@ -32,6 +32,32 @@ function normalizarCriterioUI(
   return value == null ? 'none' : value
 }
 
+const EMPATES_VACIO: EmpatesResumenDesempate = {
+  gruposConEmpate: 0,
+  postulantesEnEmpate: 0,
+  detalleGrupos: [],
+}
+
+/** Descripción de qué valores deben coincidir para contar como “empate” con el filtro activo. */
+function descripcionClaveEmpate(criterio: CriterioDesempate | 'none'): string {
+  switch (criterio) {
+    case 'none':
+      return 'mismo puntaje total'
+    case 'nem':
+      return 'mismo puntaje total y mismo puntaje NEM'
+    case 'rsh':
+      return 'mismo puntaje total, NEM y RSH'
+    case 'enfermedad':
+      return 'mismo puntaje total, NEM, RSH y enfermedad'
+    case 'hermanos':
+      return 'mismo puntaje total, NEM, RSH, enfermedad y hermanos/hijos'
+    case 'fecha':
+      return 'mismo puntaje total, NEM, RSH, enfermedad, hermanos/hijos y misma fecha/hora de postulación'
+    default:
+      return 'los criterios aplicados'
+  }
+}
+
 // ── Componente principal ──────────────────────────────────────────────────────
 
 export function FiltroDesempate() {
@@ -44,6 +70,7 @@ export function FiltroDesempate() {
   const [guardandoCriterio, setGuardandoCriterio] = useState(false)
   const [avisoZipTick, setAvisoZipTick] = useState(0)
   const [exportando, setExportando] = useState<string | null>(null)
+  const [empatesResumen, setEmpatesResumen] = useState<EmpatesResumenDesempate>(EMPATES_VACIO)
   const scrollRef = useRef<HTMLDivElement>(null)
 
   const cargarRanking = async (criterio: CriterioDesempate | null) => {
@@ -54,9 +81,11 @@ export function FiltroDesempate() {
       const data = await obtenerRankingDesempate(criterio)
       setPuntajeAplicado(data.puntajeAplicado)
       setListaOrdenada(data.postulantes)
+      setEmpatesResumen(data.empatesResumen ?? EMPATES_VACIO)
       setCriterioSeleccionado(normalizarCriterioUI(data.criterioHasta))
     } catch (err) {
       console.error('Error cargando ranking de desempate:', err)
+      setEmpatesResumen(EMPATES_VACIO)
       setErrorPostulantes('No se pudo cargar el ranking de desempate. Intente nuevamente.')
     } finally {
       setLoading(false)
@@ -76,28 +105,6 @@ export function FiltroDesempate() {
     }
     void init()
   }, [])
-
-  // Detectar y agrupar empates
-  const empatesDetectados = useMemo(() => {
-    const grupos = new Map<number, PostulanteFirestore[]>()
-    
-    listaOrdenada.forEach((p) => {
-      const total = p.puntaje?.total || 0
-      if (!grupos.has(total)) grupos.set(total, [])
-      grupos.get(total)!.push(p)
-    })
-
-    const result: { puntaje: number; postulantes: PostulanteFirestore[] }[] = []
-    grupos.forEach((postulantes, puntaje) => {
-      // Consideramos "empate" si hay más de 1 persona con el MISMO puntaje total
-      if (postulantes.length > 1) {
-        result.push({ puntaje, postulantes })
-      }
-    })
-
-    // Ordenar de mayor a menor puntaje para mostrarlos de forma más lógica
-    return result.sort((a, b) => b.puntaje - a.puntaje)
-  }, [listaOrdenada])
 
   async function handleExportExcel() {
     setExportando('excel')
@@ -204,39 +211,66 @@ export function FiltroDesempate() {
             </div>
           </div>
 
-          {/* Alerta de Empates */}
-          {empatesDetectados.length > 0 && (
-            <div className="rounded-xl border border-amber-300 bg-amber-50 p-4 shadow-sm">
+          {/* Empates restantes (clave según criterio acumulado; backend) */}
+          {puntajeAplicado != null && listaOrdenada.length > 0 && (
+            <div
+              className={`rounded-xl border p-4 shadow-sm ${
+                empatesResumen.gruposConEmpate > 0
+                  ? 'border-amber-300 bg-amber-50'
+                  : 'border-emerald-200 bg-emerald-50/80'
+              }`}
+            >
               <div className="flex items-start gap-3">
-                <svg xmlns="http://www.w3.org/2000/svg" className="h-6 w-6 text-amber-600 shrink-0 mt-0.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
-                  <path strokeLinecap="round" strokeLinejoin="round" d="M12 9v2m0 4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
-                </svg>
-                <div className="flex-1">
-                  <h3 className="text-sm font-bold text-amber-900 uppercase tracking-tight">
-                    ATENCIÓN: {empatesDetectados.length} grupo(s) de puntajes con postulantes empatados
+                {empatesResumen.gruposConEmpate > 0 ? (
+                  <svg xmlns="http://www.w3.org/2000/svg" className="h-6 w-6 text-amber-600 shrink-0 mt-0.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                    <path strokeLinecap="round" strokeLinejoin="round" d="M12 9v2m0 4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+                  </svg>
+                ) : (
+                  <svg xmlns="http://www.w3.org/2000/svg" className="h-6 w-6 text-emerald-600 shrink-0 mt-0.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                    <path strokeLinecap="round" strokeLinejoin="round" d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
+                  </svg>
+                )}
+                <div className="flex-1 min-w-0">
+                  <h3
+                    className={`text-sm font-bold uppercase tracking-tight ${
+                      empatesResumen.gruposConEmpate > 0 ? 'text-amber-900' : 'text-emerald-900'
+                    }`}
+                  >
+                    {empatesResumen.gruposConEmpate > 0
+                      ? `Empates restantes: ${empatesResumen.gruposConEmpate} grupo(s) · ${empatesResumen.postulantesEnEmpate} postulante(s) involucrados`
+                      : 'Sin empates restantes con el filtro actual'}
                   </h3>
-                  <p className="mt-1 text-xs text-amber-800 leading-relaxed mb-3">
-                    {criterioSeleccionado === 'none'
-                      ? 'El sistema ha ordenado por puntaje total; este orden se hereda de la pestaña anterior de Filtrado por puntaje total.'
-                      : 'El sistema ha ordenado automáticamente la tabla final evaluando los criterios de desempate en cascada para evitar duplicidades en el ranking.'}
+                  <p className="mt-1 text-xs leading-relaxed text-slate-700">
+                    Se considera empate cuando dos o más personas coinciden en{' '}
+                    <strong>{descripcionClaveEmpate(criterioSeleccionado)}</strong>. El orden de la tabla sigue el orden
+                    oficial del servidor (incluye desempates adicionales cuando aplica).
                   </p>
-                  
-                  <div className="space-y-2 max-h-[180px] overflow-y-auto pr-2">
-                    {empatesDetectados.map((grupo) => (
-                      <div key={grupo.puntaje} className="rounded-lg border border-amber-200 bg-white/60 p-2.5">
-                        <p className="text-xs font-bold text-amber-900 mb-1">
-                          Empate en {grupo.puntaje} puntos ({grupo.postulantes.length} postulantes)
-                        </p>
-                        <ul className="list-disc list-inside text-[11px] text-amber-800 space-y-0.5">
-                          {grupo.postulantes.map(p => (
-                            <li key={p.id}>
-                              <span className="font-semibold">{p.nombres} {p.apellidoPaterno}</span> <span className="opacity-80">({p.rut})</span>
-                            </li>
-                          ))}
-                        </ul>
-                      </div>
-                    ))}
-                  </div>
+                  <p className="mt-1 text-xs text-slate-600">
+                    {criterioSeleccionado === 'none'
+                      ? 'El orden por puntaje total se alinea con la pestaña Filtrado por puntaje total.'
+                      : 'Cada vez que subes un nivel en el menú, se excluyen de “empate” quienes ya se diferenciaron por NEM, RSH, etc.'}
+                  </p>
+                  {empatesResumen.gruposConEmpate > 0 && (
+                    <div className="mt-3 space-y-2 max-h-[200px] overflow-y-auto pr-1">
+                      {empatesResumen.detalleGrupos.map((grupo, idx) => (
+                        <div key={`emp-${idx}-${grupo.postulantes[0]?.id ?? ''}`} className="rounded-lg border border-amber-200 bg-white/70 p-2.5">
+                          <p className="text-xs font-bold text-amber-900 mb-1">
+                            {grupo.puntajeTotal} pts. · {grupo.cantidad} postulantes con la misma clave
+                          </p>
+                          <ul className="list-disc list-inside text-[11px] text-amber-900/90 space-y-0.5">
+                            {grupo.postulantes.map((p) => (
+                              <li key={p.id}>
+                                <span className="font-semibold">
+                                  {p.nombres} {p.apellidoPaterno}
+                                </span>{' '}
+                                <span className="opacity-80">({p.rut})</span>
+                              </li>
+                            ))}
+                          </ul>
+                        </div>
+                      ))}
+                    </div>
+                  )}
                 </div>
               </div>
             </div>
@@ -460,9 +494,9 @@ export function FiltroDesempate() {
                 </div>
 
                 <div className="border-t border-slate-200 px-4 py-3 text-[10px] text-slate-500">
-                  La columna # es el ranking definitivo de esta etapa: orden decreciente por puntaje total; empates resueltos
-                  con la cadena fija de desempate calculada en backend. Las filas destacadas en verde corresponden al
-                  Top 150.
+                  La columna # es el ranking definitivo de esta etapa (orden calculado en servidor). El recuadro superior
+                  indica si aún hay grupos indistinguibles según el filtro aplicado. Las filas destacadas en verde
+                  corresponden al Top 150.
                 </div>
               </>
             )}

@@ -574,6 +574,69 @@ function nivelIncluye(nivelHasta: NivelDesempate | null, criterio: NivelDesempat
   return NIVELES_DESEMPATE.indexOf(criterio) <= NIVELES_DESEMPATE.indexOf(nivelHasta)
 }
 
+/** Clave de igualdad para detectar empates *con los criterios ya aplicados* (misma lógica que el orden). */
+function claveEmpateAcumulado(
+  p: Record<string, unknown>,
+  criterioHasta: NivelDesempate | null,
+): string {
+  const puntaje = calcularPuntajeTotal(p as unknown as PostulanteData)
+  const parts: string[] = [`t:${puntaje.total ?? 0}`]
+  if (criterioHasta == null) return parts.join('|')
+  if (nivelIncluye(criterioHasta, 'nem')) parts.push(`n:${puntaje.nem ?? 0}`)
+  if (nivelIncluye(criterioHasta, 'rsh')) parts.push(`r:${puntaje.rsh ?? 0}`)
+  if (nivelIncluye(criterioHasta, 'enfermedad')) parts.push(`e:${puntaje.enfermedad ?? 0}`)
+  if (nivelIncluye(criterioHasta, 'hermanos')) parts.push(`h:${puntaje.hermanos ?? 0}`)
+  if (nivelIncluye(criterioHasta, 'fecha')) parts.push(`d:${registrationTimestamp(p)}`)
+  return parts.join('|')
+}
+
+type EmpateGrupoResumen = {
+  puntajeTotal: number
+  cantidad: number
+  postulantes: { id: string; nombres: string; apellidoPaterno: string; rut: string }[]
+}
+
+function calcularEmpatesResumen(
+  postulantes: Record<string, unknown>[],
+  criterioHasta: NivelDesempate | null,
+): {
+  gruposConEmpate: number
+  postulantesEnEmpate: number
+  /** Grupos con 2+ personas indistinguibles con el criterio actual (máx. 40 para la UI). */
+  detalleGrupos: EmpateGrupoResumen[]
+} {
+  const map = new Map<string, Record<string, unknown>[]>()
+  for (const p of postulantes) {
+    const k = claveEmpateAcumulado(p, criterioHasta)
+    if (!map.has(k)) map.set(k, [])
+    map.get(k)!.push(p)
+  }
+  let gruposConEmpate = 0
+  let postulantesEnEmpate = 0
+  const detalleGrupos: EmpateGrupoResumen[] = []
+  for (const arr of map.values()) {
+    if (arr.length <= 1) continue
+    gruposConEmpate++
+    postulantesEnEmpate += arr.length
+    if (detalleGrupos.length < 40) {
+      const first = arr[0]
+      const pt = calcularPuntajeTotal(first as unknown as PostulanteData).total ?? 0
+      detalleGrupos.push({
+        puntajeTotal: pt,
+        cantidad: arr.length,
+        postulantes: arr.map((x) => ({
+          id: String(x.id ?? ''),
+          nombres: String(x.nombres ?? ''),
+          apellidoPaterno: String(x.apellidoPaterno ?? ''),
+          rut: String(x.rut ?? ''),
+        })),
+      })
+    }
+  }
+  detalleGrupos.sort((a, b) => b.puntajeTotal - a.puntajeTotal)
+  return { gruposConEmpate, postulantesEnEmpate, detalleGrupos }
+}
+
 function registrationTimestamp(raw: Record<string, unknown>): number {
   const fecha = String(raw.fechaPostulacion ?? '').trim()
   const hora = String(raw.horaPostulacion ?? '').trim() || '00:00:00'
@@ -690,7 +753,16 @@ export const obtenerRankingDesempateAdmin = onCall(
           : null
 
       if (puntajeAplicado == null) {
-        return { postulantes: [], puntajeAplicado: null, criterioHasta }
+        return {
+          postulantes: [],
+          puntajeAplicado: null,
+          criterioHasta,
+          empatesResumen: {
+            gruposConEmpate: 0,
+            postulantesEnEmpate: 0,
+            detalleGrupos: [],
+          },
+        }
       }
 
       const snapshot = await db.collection('postulantes').get()
@@ -744,7 +816,9 @@ export const obtenerRankingDesempateAdmin = onCall(
         return String(a.id).localeCompare(String(b.id))
       })
 
-      return { postulantes: ranking, puntajeAplicado, criterioHasta }
+      const empatesResumen = calcularEmpatesResumen(elegibles, criterioHasta)
+
+      return { postulantes: ranking, puntajeAplicado, criterioHasta, empatesResumen }
     } catch (e: unknown) {
       console.error('Error obtenerRankingDesempateAdmin:', e)
       if (e instanceof HttpsError) throw e
