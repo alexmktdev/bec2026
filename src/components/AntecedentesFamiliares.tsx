@@ -115,10 +115,10 @@ export function AntecedentesFamiliares() {
             {errors.tramoRegistroSocial && <p className="text-xs font-medium text-red-500">{errors.tramoRegistroSocial.message}</p>}
           </div>
 
-          <h2 className="col-span-2 text-base font-bold text-slate-800 border-b border-slate-100 pb-1 pt-4">b) Hermanos/as estudiando</h2>
+          <h2 className="col-span-2 text-base font-bold text-slate-800 border-b border-slate-100 pb-1 pt-4">b) Hermanos/as y/o hijos/as estudiando</h2>
 
           <div className="space-y-1.5">
-            <label className="text-sm font-bold text-slate-700">¿Tiene hermanos/as estudiando?</label>
+            <label className="text-sm font-bold text-slate-700">¿Tiene hermanos/as y/o hijos/as estudiando?</label>
             <select
               {...register('tieneHermanosOHijosEstudiando')}
               className={`block w-full rounded-lg border px-3 py-2.5 text-sm transition-all focus:ring-2 focus:ring-blue-100 outline-none bg-white ${errors.tieneHermanosOHijosEstudiando ? 'border-red-400' : 'border-slate-300 focus:border-blue-500'}`}
