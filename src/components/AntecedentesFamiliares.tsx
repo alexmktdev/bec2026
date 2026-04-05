@@ -133,7 +133,7 @@ export function AntecedentesFamiliares() {
           {tieneHermanosEstudiando === 'Si' && (
             <div className="col-span-2 grid gap-6 md:grid-cols-2 bg-slate-50 p-4 rounded-xl border border-slate-200 animate-fade-in">
               <div className="space-y-1.5">
-                <label className="text-xs font-bold text-slate-600">¿Tiene un (1) hermano estudiando?</label>
+                <label className="text-xs font-bold text-slate-600">¿Tiene un (1) hermano/hijo estudiando?</label>
                 <select
                   {...register('tieneUnHermanOHijoEstudiando', {
                     onChange: (e) => { if (e.target.value === 'Si') setValue('tieneDosOMasHermanosOHijosEstudiando', 'No') }
@@ -148,7 +148,7 @@ export function AntecedentesFamiliares() {
               </div>
 
               <div className="space-y-1.5">
-                <label className="text-xs font-bold text-slate-600">¿Tiene 2 o más hermanos estudiando?</label>
+                <label className="text-xs font-bold text-slate-600">¿Tiene 2 o más hermanos/hijos estudiando?</label>
                 <select
                   {...register('tieneDosOMasHermanosOHijosEstudiando', {
                     onChange: (e) => { if (e.target.value === 'Si') setValue('tieneUnHermanOHijoEstudiando', 'No') }
