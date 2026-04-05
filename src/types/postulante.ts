@@ -132,8 +132,6 @@ export type RechazoEntradaCode =
   | 'duplicate'
   | 'rut_invalido'
   | 'declaracion'
-  /** RUT ya figura en rechazados de entrada; no puede reintentar postulación. */
-  | 'rechazo_entrada_previo'
   | 'desconocido'
 
 export interface PostulanteRechazadoEntrada extends PostulanteData {
@@ -149,8 +147,6 @@ export interface PostulanteRechazadoEntrada extends PostulanteData {
     matriculaCurso?: boolean
     historical: boolean
     duplicate: boolean
-    /** Nuevo intento de postulación con RUT ya rechazado en entrada. */
-    rechazoEntradaPrevio?: boolean
   }
   source: 'verificacion' | 'creacion' | 'frontend'
   createdAt: string

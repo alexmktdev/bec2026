@@ -26,7 +26,6 @@ import {
 } from '../../src/postulacion/shared/businessRules'
 import { normalizeRut, rutTieneFormatoMinimo, validarRutMatematico } from '../../src/postulacion/shared/rut'
 import { CrearPostulacionPayloadSchema } from '../../src/postulacion/shared/payloadValidation'
-import { MENSAJE_RECHAZO_ENTRADA_PREVIO } from '../../src/postulacion/shared/rechazoEntradaPrevioMessage'
 import { webCallableBase } from './httpsCallableDefaults'
 import { enqueueRechazoEntradaMail } from './triggerEmailRechazoEntrada'
 import { enqueuePostulacionExitosaMail } from './triggerEmailPostulacionExitosa'
@@ -51,8 +50,6 @@ function etiquetaRechazoEntrada(code: RechazoEntradaCode): string {
       return 'Declaración jurada no aceptada'
     case 'matricula_curso':
       return 'Matrícula en curso no correspondiente a 2026'
-    case 'rechazo_entrada_previo':
-      return 'Rechazo de entrada previo'
     default:
       return 'Rechazo de entrada'
   }
@@ -67,7 +64,6 @@ function toRechazoEntradaCode(code: string): RechazoEntradaCode {
     case 'rut_invalido':
     case 'declaracion':
     case 'matricula_curso':
-    case 'rechazo_entrada_previo':
       return code
     default:
       return 'desconocido'
@@ -95,7 +91,6 @@ async function registrarRechazoEntradaEnFirestore(
       matriculaCurso: code === 'matricula_curso',
       historical: code === 'historical',
       duplicate: code === 'duplicate',
-      rechazoEntradaPrevio: code === 'rechazo_entrada_previo',
     },
     source,
     createdAt: now,
@@ -177,15 +172,13 @@ export const verificarElegibilidadPostulacion = onCall(
       console.log(`Verificando elegibilidad para: ${norm}`)
       const db = admin.firestore()
       
-      const [hist, post, rechEntrada] = await Promise.all([
+      const [hist, post] = await Promise.all([
         db.collection('historical_ruts').doc(norm).get(),
         db.collection('postulantes').doc(norm).get(),
-        db.collection('postulantes_rechazados_entrada').doc(norm).get(),
       ])
 
       if (hist.exists) return { ok: false as const, code: 'historical' as const }
       if (post.exists) return { ok: false as const, code: 'duplicate' as const }
-      if (rechEntrada.exists) return { ok: false as const, code: 'rechazo_entrada_previo' as const }
 
       return { ok: true as const }
     } catch (error) {
@@ -277,25 +270,18 @@ export const crearPostulacion = onCall(
     // ── 5. Verificar duplicados y base histórica ──
     const norm = rutNormalizadoPostulacion(postData)
     const db = admin.firestore()
-    const [hist, existing, rechEntrada] = await Promise.all([
+    const [hist, existing] = await Promise.all([
       db.collection('historical_ruts').doc(norm).get(),
       db.collection('postulantes').doc(norm).get(),
-      db.collection('postulantes_rechazados_entrada').doc(norm).get(),
     ])
     if (hist.exists) {
       throw new HttpsError(
         'failed-precondition',
         'El RUT corresponde a un beneficiario de procesos anteriores. En consecuencia, su postulación para el presente año fué rechazada.',
-        { reason: 'historical' },
       )
     }
     if (existing.exists) {
       throw new HttpsError('already-exists', 'Ya existe una postulación con este RUT.')
-    }
-    if (rechEntrada.exists) {
-      throw new HttpsError('failed-precondition', MENSAJE_RECHAZO_ENTRADA_PREVIO, {
-        reason: 'rechazo_entrada_previo',
-      })
     }
 
     // ── 6. Generar URLs de descarga desde las rutas de Storage (Admin SDK) ──
