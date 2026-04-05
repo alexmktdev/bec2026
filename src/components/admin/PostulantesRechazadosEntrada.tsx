@@ -120,7 +120,14 @@ export function PostulantesRechazadosEntrada() {
                 {paginaFilas.map((r) => (
                   <tr key={r.id ?? r.rutNormalizado}>
                     <Cell value={`${r.nombres} ${r.apellidoPaterno} ${r.apellidoMaterno}`} />
-                    <Cell value={r.rut} rejected={r.rejectionFlags.historical || r.rejectionFlags.duplicate} />
+                    <Cell
+                      value={r.rut}
+                      rejected={
+                        r.rejectionFlags.historical ||
+                        r.rejectionFlags.duplicate ||
+                        r.rejectionFlags.rechazoEntradaPrevio === true
+                      }
+                    />
                     <Cell value={r.edad} rejected={r.rejectionFlags.edad} />
                     <Cell value={r.nem} rejected={r.rejectionFlags.nem} />
                     <Cell value={r.sexo} />
@@ -143,7 +150,8 @@ export function PostulantesRechazadosEntrada() {
                         r.rejectionFlags.nem ||
                         r.rejectionFlags.matriculaCurso === true ||
                         r.rejectionFlags.historical ||
-                        r.rejectionFlags.duplicate
+                        r.rejectionFlags.duplicate ||
+                        r.rejectionFlags.rechazoEntradaPrevio === true
                       }
                     />
                     <Cell value={r.rejectionMessage} rejected />

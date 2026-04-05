@@ -3,9 +3,11 @@ import { useNavigate } from 'react-router-dom'
 import logoMolina from '../assets/logo-molina.png'
 import { usePostulacion } from '../contexts/PostulacionContext'
 import { evaluarReglasPostulacion } from '../postulacion/shared/businessRules'
+import { MENSAJE_RECHAZO_ENTRADA_PREVIO } from '../postulacion/shared/rechazoEntradaPrevioMessage'
 import {
   crearPostulacionCallable,
   esErrorCallable,
+  razonHttpsCallable,
   registrarPostulanteRechazadoEntradaCallable,
   verificarElegibilidadPostulacion,
 } from '../services/postulacionCallableService'
@@ -63,6 +65,13 @@ export function EvaluandoPostulacion() {
             })
             return
           }
+          if (elig.code === 'rechazo_entrada_previo') {
+            navigate('/postulacion_rechazada', {
+              replace: true,
+              state: { motivo: MENSAJE_RECHAZO_ENTRADA_PREVIO },
+            })
+            return
+          }
         }
 
         // 3. Subir documentos a Storage (igual que antes — versión simple B)
@@ -104,6 +113,18 @@ export function EvaluandoPostulacion() {
               return
             }
             if (createErr.code === 'functions/failed-precondition') {
+              const reason = razonHttpsCallable(createErr)
+              const msg = typeof createErr.message === 'string' ? createErr.message : ''
+              if (
+                reason === 'rechazo_entrada_previo' ||
+                msg === MENSAJE_RECHAZO_ENTRADA_PREVIO
+              ) {
+                navigate('/postulacion_rechazada', {
+                  replace: true,
+                  state: { motivo: msg || MENSAJE_RECHAZO_ENTRADA_PREVIO },
+                })
+                return
+              }
               void registrarPostulanteRechazadoEntradaCallable(data, 'historical', MOTIVO_HISTORICO).catch(console.error)
               navigate('/postulacion_rechazada', {
                 replace: true,
