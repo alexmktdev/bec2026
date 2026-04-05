@@ -26,6 +26,7 @@ import {
 } from '../../src/postulacion/shared/businessRules'
 import { normalizeRut, rutTieneFormatoMinimo, validarRutMatematico } from '../../src/postulacion/shared/rut'
 import { CrearPostulacionPayloadSchema } from '../../src/postulacion/shared/payloadValidation'
+import { postulacionYaExistePorRutNorm } from './postulacionDuplicada'
 import { webCallableBase } from './httpsCallableDefaults'
 import { enqueueRechazoEntradaMail } from './triggerEmailRechazoEntrada'
 import { enqueuePostulacionExitosaMail } from './triggerEmailPostulacionExitosa'
@@ -172,13 +173,13 @@ export const verificarElegibilidadPostulacion = onCall(
       console.log(`Verificando elegibilidad para: ${norm}`)
       const db = admin.firestore()
       
-      const [hist, post] = await Promise.all([
+      const [hist, yaPostulo] = await Promise.all([
         db.collection('historical_ruts').doc(norm).get(),
-        db.collection('postulantes').doc(norm).get(),
+        postulacionYaExistePorRutNorm(db, norm),
       ])
 
       if (hist.exists) return { ok: false as const, code: 'historical' as const }
-      if (post.exists) return { ok: false as const, code: 'duplicate' as const }
+      if (yaPostulo) return { ok: false as const, code: 'duplicate' as const }
 
       return { ok: true as const }
     } catch (error) {
@@ -208,14 +209,14 @@ export const registrarPostulanteRechazadoEntrada = onCall(
       message = reglas.message
     } else {
       const norm = normalizeRut(String(data.rut || '').trim())
-      const [hist, post] = await Promise.all([
+      const [hist, duplicado] = await Promise.all([
         db.collection('historical_ruts').doc(norm).get(),
-        db.collection('postulantes').doc(norm).get(),
+        postulacionYaExistePorRutNorm(db, norm),
       ])
       if (hist.exists) {
         reason = 'historical'
         message = 'El RUT corresponde a un beneficiario de procesos anteriores.'
-      } else if (post.exists) {
+      } else if (duplicado) {
         reason = 'duplicate'
         message = 'Ya existe una postulación con este RUT.'
       }
@@ -270,9 +271,9 @@ export const crearPostulacion = onCall(
     // ── 5. Verificar duplicados y base histórica ──
     const norm = rutNormalizadoPostulacion(postData)
     const db = admin.firestore()
-    const [hist, existing] = await Promise.all([
+    const [hist, yaExistePostulacion] = await Promise.all([
       db.collection('historical_ruts').doc(norm).get(),
-      db.collection('postulantes').doc(norm).get(),
+      postulacionYaExistePorRutNorm(db, norm),
     ])
     if (hist.exists) {
       throw new HttpsError(
@@ -280,7 +281,7 @@ export const crearPostulacion = onCall(
         'El RUT corresponde a un beneficiario de procesos anteriores. En consecuencia, su postulación para el presente año fué rechazada.',
       )
     }
-    if (existing.exists) {
+    if (yaExistePostulacion) {
       throw new HttpsError('already-exists', 'Ya existe una postulación con este RUT.')
     }
 

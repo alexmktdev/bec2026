@@ -39,9 +39,9 @@ const REQUISITOS_FORMALES = [
 ]
 
 const REQUISITOS_COBRO = [
-  'Indicar en el formulario de postulación una cuenta bancaria (cuenta rut) a nombre del propio beneficiario/a.',
+  'Indicar en el formulario de postulación una cuenta bancaria (cuenta rut u otra) a nombre del propio beneficiario/a.',
   'El/la beneficiario/a debe ser el/la titular de la cuenta bancaria indicada.',
-  'El pago se realiza por transferencia electrónica dentro de los 15 días hábiles posteriores al decreto que determina los beneficiarios.',
+  'La información sobre el pago se informará oportunamente a los beneficiarios cuando corresponda.',
 ]
 
 interface SectionProps {
