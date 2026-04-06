@@ -1,7 +1,7 @@
 import './functionsInit'
 import { randomUUID } from 'node:crypto'
 import * as admin from 'firebase-admin'
-import { DocumentReference, GeoPoint, Timestamp } from 'firebase-admin/firestore'
+import { DocumentReference, GeoPoint, Timestamp, type DocumentSnapshot } from 'firebase-admin/firestore'
 import { HttpsError, onCall, onRequest } from 'firebase-functions/v2/https'
 import archiver from 'archiver'
 import type {
@@ -170,6 +170,32 @@ const DESCARGA_DOCS_ZIP_TTL_MS = 7 * 24 * 60 * 60 * 1000
 
 function nombreEntradaZip(docId: string): string {
   return DOC_ZIP_ENTRY_NAMES[docId] ?? `${docId}.pdf`
+}
+
+/** Carpeta raíz dentro del ZIP: RUT + nombres + apellidos (alineado con `src/services/zipDownload.ts`). */
+function carpetaRaizZipPostulante(
+  pdata: {
+    rut?: unknown
+    nombres?: unknown
+    apellidoPaterno?: unknown
+    apellidoMaterno?: unknown
+  },
+  postulanteId: string,
+): string {
+  const rut = String(pdata.rut ?? '')
+    .replace(/\./g, '')
+    .trim()
+  const nombres = String(pdata.nombres ?? '').trim()
+  const ap1 = String(pdata.apellidoPaterno ?? '').trim()
+  const ap2 = String(pdata.apellidoMaterno ?? '').trim()
+  const partes = [rut, nombres, ap1, ap2].filter((p) => p.length > 0)
+  const raw = partes.length > 0 ? partes.join('_') : postulanteId
+  let s = raw.replace(/[<>:"/\\|?*]/g, '_').replace(/\s+/g, '_')
+  s = s.replace(/_+/g, '_').replace(/^_|_$/g, '')
+  if (!s) {
+    s = postulanteId.replace(/[^a-zA-Z0-9._-]/g, '_').slice(0, 80)
+  }
+  return s.slice(0, 120)
 }
 
 function assertPuedeDescargarDocumentosPostulante(
@@ -1164,6 +1190,110 @@ export const emitirEnlaceDescargaZipDocumentos = onCall(
   },
 )
 
+const LOTE_ZIP_MAX_FILAS = 3000
+const LOTE_ZIP_GETALL_CHUNK = 30
+const LOTE_ZIP_BATCH_WRITE = 450
+
+function chunkArray<T>(arr: T[], size: number): T[][] {
+  const out: T[][] = []
+  for (let i = 0; i < arr.length; i += size) out.push(arr.slice(i, i + size))
+  return out
+}
+
+/**
+ * Emite muchos tokens de descarga ZIP en una sola invocación (p. ej. export Excel).
+ * `postulanteIds[i]` corresponde a la fila `i`; cadenas vacías se ignoran.
+ * Revisores: solo filas cuyo postulante tenga `assignedTo` = uid del llamante (las demás quedan token vacío en la respuesta).
+ */
+export const emitirEnlacesDescargaZipDocumentosLote = onCall(
+  { ...webCallableBase(), memory: '512MiB', timeoutSeconds: 120, maxInstances: 10 },
+  async (request) => {
+    const callerUid = request.auth?.uid
+    if (!callerUid) throw new HttpsError('unauthenticated', 'Debe iniciar sesión.')
+
+    const raw = (request.data as { postulanteIds?: unknown })?.postulanteIds
+    if (!Array.isArray(raw)) {
+      throw new HttpsError('invalid-argument', 'postulanteIds debe ser un arreglo.')
+    }
+    if (raw.length === 0) {
+      return { tokens: [] as string[] }
+    }
+    if (raw.length > LOTE_ZIP_MAX_FILAS) {
+      throw new HttpsError(
+        'invalid-argument',
+        `Máximo ${LOTE_ZIP_MAX_FILAS} filas por lote. Reduzca el export o exporte por partes.`,
+      )
+    }
+
+    const postulanteIds = raw.map((x) => String(x ?? '').trim())
+    const db = admin.firestore()
+    const { email } = await assertRevisorOrAdmin(callerUid, db, request.auth?.token?.email)
+    const userDoc = await db.collection('users').doc(callerUid).get()
+    const role = String(userDoc.data()?.role || '').toLowerCase().trim()
+
+    const idsParaLeer = [...new Set(postulanteIds.filter((id) => id.length > 0))]
+    const snapsMap = new Map<string, DocumentSnapshot>()
+    for (const part of chunkArray(
+      idsParaLeer.map((id) => db.collection('postulantes').doc(id)),
+      LOTE_ZIP_GETALL_CHUNK,
+    )) {
+      if (part.length === 0) continue
+      const snaps = await db.getAll(...part)
+      for (const s of snaps) {
+        if (s.exists) snapsMap.set(s.id, s)
+      }
+    }
+
+    const outTokens: string[] = new Array(postulanteIds.length).fill('')
+    const tokenWrites: { tokenId: string; postulanteId: string }[] = []
+
+    for (let i = 0; i < postulanteIds.length; i++) {
+      const id = postulanteIds[i]
+      if (!id) continue
+      const snap = snapsMap.get(id)
+      if (!snap?.exists) continue
+      const pdata = snap.data() as { assignedTo?: unknown }
+      try {
+        assertPuedeDescargarDocumentosPostulante(callerUid, role, pdata)
+      } catch {
+        continue
+      }
+      const tokenId = randomUUID()
+      tokenWrites.push({ tokenId, postulanteId: id })
+      outTokens[i] = tokenId
+    }
+
+    const coll = db.collection(DESCARGA_DOCS_ZIP_TOKENS)
+    const now = new Date().toISOString()
+    const exp = Date.now() + DESCARGA_DOCS_ZIP_TTL_MS
+
+    for (const part of chunkArray(tokenWrites, LOTE_ZIP_BATCH_WRITE)) {
+      if (part.length === 0) continue
+      const batch = db.batch()
+      for (const { tokenId, postulanteId } of part) {
+        batch.set(coll.doc(tokenId), {
+          postulanteId,
+          createdAt: now,
+          expiresAtMs: exp,
+          createdByUid: callerUid,
+        })
+      }
+      await batch.commit()
+    }
+
+    await writeAuditLog(
+      db,
+      callerUid,
+      email,
+      'EMITIR_ENLACES_ZIP_DOCS_LOTE',
+      'LOTE_EXCEL',
+      `Tokens ZIP documentación: ${tokenWrites.length} emitidos sobre ${postulanteIds.length} filas solicitadas.`,
+    )
+
+    return { tokens: outTokens }
+  },
+)
+
 /**
  * GET público con token opaco: genera el ZIP y elimina el token al terminar.
  * No usa Firebase Auth en el navegador; la seguridad es el token de un solo uso + expiración.
@@ -1238,19 +1368,26 @@ export const descargarZipDocumentosPostulanteHttp = onRequest(
         res.status(404).send('Postulante no encontrado.')
         return
       }
-      const pdata = pSnap.data() as { documentUrls?: Record<string, string> }
+      const pdata = pSnap.data() as {
+        documentUrls?: Record<string, string>
+        rut?: unknown
+        nombres?: unknown
+        apellidoPaterno?: unknown
+        apellidoMaterno?: unknown
+      }
       const documentUrls =
         pdata.documentUrls && typeof pdata.documentUrls === 'object' ? pdata.documentUrls : {}
       const bucket = admin.storage().bucket()
+      const carpeta = carpetaRaizZipPostulante(pdata, postulanteId)
 
       const archive = archiver('zip', { zlib: { level: 0 } })
       archive.on('error', (err: Error) => {
         console.error('archiver error', err)
       })
 
-      const safeName = postulanteId.replace(/[^a-zA-Z0-9._-]/g, '_').slice(0, 80)
+      const safeZipFileName = carpeta.replace(/[^a-zA-Z0-9._-]/g, '_').slice(0, 80) || postulanteId.slice(0, 40)
       res.setHeader('Content-Type', 'application/zip')
-      res.setHeader('Content-Disposition', `attachment; filename="documentos_${safeName}.zip"`)
+      res.setHeader('Content-Disposition', `attachment; filename="documentos_${safeZipFileName}.zip"`)
       archive.pipe(res)
 
       let agregados = 0
@@ -1261,13 +1398,13 @@ export const descargarZipDocumentosPostulanteHttp = onRequest(
         const file = bucket.file(path)
         const [exists] = await file.exists()
         if (!exists) continue
-        archive.append(file.createReadStream(), { name: nombreEntradaZip(docId) })
+        archive.append(file.createReadStream(), { name: `${carpeta}/${nombreEntradaZip(docId)}` })
         agregados++
       }
 
       if (agregados === 0) {
         archive.append(Buffer.from('No hay archivos de documentación asociados a este postulante.', 'utf8'), {
-          name: 'LEEME.txt',
+          name: `${carpeta}/LEEME.txt`,
         })
       }
 
