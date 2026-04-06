@@ -36,6 +36,7 @@ export function AsignacionRevisoresModal({
   const [asignaciones, setAsignaciones] = useState<TramoAsignacion[]>([])
   const [loading, setLoading] = useState(true)
   const [saving, setSaving] = useState(false)
+  const [estadoSegmentos, setEstadoSegmentos] = useState<Record<string, Pick<TramoVigenteEstado, 'terminado' | 'totalTerminados' | 'totalAsignados'>>>({})
 
   const [errorMsg, setErrorMsg] = useState<string | null>(null)
   const [successMsg, setSuccessMsg] = useState<string | null>(null)
@@ -64,6 +65,16 @@ export function AsignacionRevisoresModal({
         setRevisores(rev)
         const currentTramos = await obtenerTramos()
         setAsignaciones(currentTramos.map(vigenteABorrador))
+        const estado: Record<string, Pick<TramoVigenteEstado, 'terminado' | 'totalTerminados' | 'totalAsignados'>> = {}
+        for (const tramo of currentTramos) {
+          const key = tramo.segmentId || legacySegmentId(tramo.reviewerUid, tramo.startRange, tramo.endRange)
+          estado[key] = {
+            terminado: tramo.terminado,
+            totalTerminados: tramo.totalTerminados,
+            totalAsignados: tramo.totalAsignados,
+          }
+        }
+        setEstadoSegmentos(estado)
       } catch (err) {
         console.error(err)
         setErrorMsg('Error al cargar datos del servidor')
@@ -153,6 +164,8 @@ export function AsignacionRevisoresModal({
     () => [...asignaciones].sort((a, b) => a.startRange - b.startRange || a.endRange - b.endRange),
     [asignaciones],
   )
+
+  const estadoPorSegmento = (a: TramoAsignacion) => estadoSegmentos[a.segmentId]
 
   const resumenCoberturaModal = useMemo(
     () =>
@@ -422,6 +435,35 @@ export function AsignacionRevisoresModal({
                     <div>
                       <span className="font-bold text-blue-900">{a.reviewerName}</span>{' '}
                       <span className="text-xs text-slate-500">({a.reviewerEmail})</span>
+                      {(() => {
+                        const estado = estadoPorSegmento(a)
+                        if (!estado) {
+                          return (
+                            <div className="mt-1 text-[11px] font-medium text-slate-500">
+                              Avance: pendiente de guardar cambios para calcular estado
+                            </div>
+                          )
+                        }
+                        return (
+                          <div className="mt-1 flex flex-wrap items-center gap-2 text-[11px]">
+                            <span className="text-slate-600">
+                              Avance: <strong>{estado.totalTerminados}</strong>/{estado.totalAsignados}
+                            </span>
+                            {estado.terminado ? (
+                              <span className="inline-flex items-center gap-1 rounded-full border border-emerald-300 bg-emerald-100 px-2 py-0.5 font-black uppercase tracking-wide text-emerald-800">
+                                <svg xmlns="http://www.w3.org/2000/svg" className="h-3.5 w-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={3}>
+                                  <path strokeLinecap="round" strokeLinejoin="round" d="M5 13l4 4L19 7" />
+                                </svg>
+                                Terminado
+                              </span>
+                            ) : (
+                              <span className="inline-flex items-center rounded-full border border-amber-300 bg-amber-100 px-2 py-0.5 font-bold uppercase tracking-wide text-amber-800">
+                                Pendiente
+                              </span>
+                            )}
+                          </div>
+                        )
+                      })()}
                     </div>
                     <div className="flex flex-wrap items-center gap-2">
                       <span className="rounded bg-green-100 px-3 py-1 font-bold text-green-800">
