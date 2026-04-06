@@ -309,8 +309,18 @@ export function FiltroRevisionDoc() {
           <div className="flex gap-2">
             {!filtroDocActivo && (
               <button
-                onClick={() => setVerTramosLectura(true)}
-                title="Ver las personas que tienen tramos actualmente asignados"
+                onClick={() => {
+                  if (roleAdmin === 'superadmin') {
+                    setModoAsignacion(true)
+                    return
+                  }
+                  setVerTramosLectura(true)
+                }}
+                title={
+                  roleAdmin === 'superadmin'
+                    ? 'Ver, editar o quitar los tramos asignados'
+                    : 'Ver las personas que tienen tramos actualmente asignados'
+                }
                 className="bg-slate-50 text-slate-700 hover:bg-slate-100 border border-slate-200 shadow-sm px-3 py-1.5 rounded-lg text-sm font-bold flex items-center gap-2 transition-colors"
               >
                 <svg className="w-4 h-4 text-emerald-600" fill="none" viewBox="0 0 24 24" stroke="currentColor">
