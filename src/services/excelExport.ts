@@ -3,6 +3,8 @@ import { saveAs } from 'file-saver'
 import type { PostulanteFirestore } from '../types/postulante'
 import { formatDate } from '../utils/inputFormatters'
 import { resumenCuentaBancariaListado } from '../utils/cuentaBancariaDisplay'
+import { prepareCallableSecurity } from '../firebase/config'
+import { emitirEnlaceDescargaZipDocumentos } from './descargaZipPostulanteService'
 
 const COLUMNS: { header: string; key: string; width: number }[] = [
   { header: 'Nombres', key: 'nombres', width: 20 },
@@ -104,18 +106,61 @@ function rowValuesInOrder(p: PostulanteFirestore): unknown[] {
   })
 }
 
+const COLUMNAS_MANUAL_FINAL = [
+  { header: 'Revisor designado', width: 22 },
+  { header: 'Estado', width: 14 },
+  { header: 'Link descarga documentación (ZIP)', width: 72 },
+] as const
+
+async function enlacesZipEnParalelo(postulantes: PostulanteFirestore[], limite: number): Promise<string[]> {
+  const n = postulantes.length
+  const resultados = new Array<string>(n)
+  let idx = 0
+
+  async function worker(): Promise<void> {
+    for (;;) {
+      const i = idx++
+      if (i >= n) return
+      const p = postulantes[i]
+      const id = typeof p.id === 'string' ? p.id.trim() : ''
+      if (!id) {
+        resultados[i] = ''
+        continue
+      }
+      try {
+        resultados[i] = await emitirEnlaceDescargaZipDocumentos(id)
+      } catch {
+        resultados[i] = ''
+      }
+    }
+  }
+
+  const workers = Math.max(1, Math.min(limite, n))
+  await Promise.all(Array.from({ length: workers }, () => worker()))
+  return resultados
+}
+
 export async function exportarExcel(postulantes: PostulanteFirestore[]) {
+  await prepareCallableSecurity()
+  const enlacesZip = await enlacesZipEnParalelo(postulantes, 4)
+
   const workbook = new ExcelJS.Workbook()
   const sheet = workbook.addWorksheet('Postulantes')
 
-  const headerRow = sheet.addRow(COLUMNS.map((c) => c.header))
+  const headers = [...COLUMNS.map((c) => c.header), ...COLUMNAS_MANUAL_FINAL.map((c) => c.header)]
+  const headerRow = sheet.addRow(headers)
   headerRow.font = { bold: true }
   COLUMNS.forEach((col, i) => {
     sheet.getColumn(i + 1).width = col.width
   })
+  COLUMNAS_MANUAL_FINAL.forEach((col, j) => {
+    sheet.getColumn(COLUMNS.length + j + 1).width = col.width
+  })
 
-  for (const p of postulantes) {
-    sheet.addRow(rowValuesInOrder(p))
+  for (let i = 0; i < postulantes.length; i++) {
+    const p = postulantes[i]
+    const fila = [...rowValuesInOrder(p), '', '', enlacesZip[i] ?? '']
+    sheet.addRow(fila)
   }
 
   const buffer = await workbook.xlsx.writeBuffer()

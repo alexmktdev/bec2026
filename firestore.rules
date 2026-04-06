@@ -60,5 +60,10 @@ service cloud.firestore {
     match /config/filtro_desempate {
       allow read, write: if isRevisorOrAdmin();
     }
+
+    // Tokens de descarga ZIP (solo Cloud Functions / Admin SDK)
+    match /descarga_docs_zip_tokens/{tokenId} {
+      allow read, write: if false;
+    }
   }
 }

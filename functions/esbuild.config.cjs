@@ -19,6 +19,12 @@ esbuild
     },
     // Código compartido del monorepo (sin duplicar lógica)
     absWorkingDir: __dirname,
-    external: ['firebase-admin', 'firebase-functions', 'firebase-functions/v2', 'firebase-functions/v2/https'],
+    external: [
+      'firebase-admin',
+      'firebase-functions',
+      'firebase-functions/v2',
+      'firebase-functions/v2/https',
+      'archiver',
+    ],
   })
   .catch(() => process.exit(1))

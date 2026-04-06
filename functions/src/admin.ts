@@ -2,7 +2,8 @@ import './functionsInit'
 import { randomUUID } from 'node:crypto'
 import * as admin from 'firebase-admin'
 import { DocumentReference, GeoPoint, Timestamp } from 'firebase-admin/firestore'
-import { HttpsError, onCall } from 'firebase-functions/v2/https'
+import { HttpsError, onCall, onRequest } from 'firebase-functions/v2/https'
+import archiver from 'archiver'
 import type {
   PostulanteData,
   PostulanteRechazadoEntrada,
@@ -152,6 +153,40 @@ function storagePathFromDownloadUrl(url: string): string | null {
   } catch {
     return null
   }
+}
+
+/** Nombres dentro del ZIP (alineado con `src/services/zipDownload.ts`). */
+const DOC_ZIP_ENTRY_NAMES: Record<string, string> = {
+  identidad: '01_Cedula_identidad.pdf',
+  matricula: '02_Certificado_matricula.pdf',
+  rsh: '03_Cartola_registro_social_hogares.pdf',
+  nem: '04_Concentracion_notas_NEM.pdf',
+  hermanos: '05_Certificado_alumno_regular.pdf',
+  medico: '06_Certificado_medico.pdf',
+}
+
+const DESCARGA_DOCS_ZIP_TOKENS = 'descarga_docs_zip_tokens'
+const DESCARGA_DOCS_ZIP_TTL_MS = 7 * 24 * 60 * 60 * 1000
+
+function nombreEntradaZip(docId: string): string {
+  return DOC_ZIP_ENTRY_NAMES[docId] ?? `${docId}.pdf`
+}
+
+function assertPuedeDescargarDocumentosPostulante(
+  callerUid: string,
+  role: string,
+  postulante: { assignedTo?: unknown },
+): void {
+  const r = role.toLowerCase().trim()
+  if (r === 'superadmin' || r === 'admin') return
+  if (r === 'revisor') {
+    const assigned = typeof postulante.assignedTo === 'string' ? postulante.assignedTo : ''
+    if (assigned !== callerUid) {
+      throw new HttpsError('permission-denied', 'No tiene asignado este postulante para descargar sus documentos.')
+    }
+    return
+  }
+  throw new HttpsError('permission-denied', 'No tiene permisos.')
 }
 
 async function assertRevisorOrAdmin(
@@ -1080,6 +1115,166 @@ export const obtenerPostulantesRechazadosEntrada = onCall(
       console.error('Error obtenerPostulantesRechazadosEntrada:', e)
       if (e instanceof HttpsError) throw e
       throw new HttpsError('internal', 'No se pudieron obtener los rechazados de entrada.')
+    }
+  },
+)
+
+/**
+ * Emite un enlace HTTP de un solo uso (token en Firestore) para descargar un ZIP con los documentos del postulante.
+ * Solo admin/revisor con asignación correspondiente.
+ */
+export const emitirEnlaceDescargaZipDocumentos = onCall(
+  { ...webCallableBase(), memory: '256MiB', timeoutSeconds: 30, maxInstances: 20 },
+  async (request) => {
+    const callerUid = request.auth?.uid
+    if (!callerUid) throw new HttpsError('unauthenticated', 'Debe iniciar sesión.')
+
+    const postulanteId = String((request.data as { postulanteId?: unknown })?.postulanteId ?? '').trim()
+    if (!postulanteId) throw new HttpsError('invalid-argument', 'postulanteId requerido.')
+
+    const db = admin.firestore()
+    const { email } = await assertRevisorOrAdmin(callerUid, db, request.auth?.token?.email)
+    const userDoc = await db.collection('users').doc(callerUid).get()
+    const role = String(userDoc.data()?.role || '').toLowerCase().trim()
+
+    const snap = await db.collection('postulantes').doc(postulanteId).get()
+    if (!snap.exists) throw new HttpsError('not-found', 'Postulante no encontrado.')
+
+    const pdata = snap.data() as { assignedTo?: unknown }
+    assertPuedeDescargarDocumentosPostulante(callerUid, role, pdata)
+
+    const tokenId = randomUUID()
+    await db.collection(DESCARGA_DOCS_ZIP_TOKENS).doc(tokenId).set({
+      postulanteId,
+      createdAt: new Date().toISOString(),
+      expiresAtMs: Date.now() + DESCARGA_DOCS_ZIP_TTL_MS,
+      createdByUid: callerUid,
+    })
+
+    await writeAuditLog(
+      db,
+      callerUid,
+      email,
+      'EMITIR_ENLACE_ZIP_DOCS',
+      postulanteId,
+      'Token de descarga ZIP documentación (export Excel / panel).',
+    )
+
+    return { token: tokenId }
+  },
+)
+
+/**
+ * GET público con token opaco: genera el ZIP y elimina el token al terminar.
+ * No usa Firebase Auth en el navegador; la seguridad es el token de un solo uso + expiración.
+ */
+export const descargarZipDocumentosPostulanteHttp = onRequest(
+  {
+    region: 'southamerica-west1',
+    cors: true,
+    invoker: 'public',
+    memory: '512MiB',
+    timeoutSeconds: 120,
+    maxInstances: 10,
+  },
+  async (req, res) => {
+    if (req.method === 'OPTIONS') {
+      res.status(204).send('')
+      return
+    }
+    if (req.method !== 'GET') {
+      res.status(405).set('Allow', 'GET').send('Method Not Allowed')
+      return
+    }
+
+    const tokenId = String((req.query as { t?: string }).t ?? '').trim()
+    if (!tokenId) {
+      res.status(400).send('Parámetro t requerido.')
+      return
+    }
+
+    const db = admin.firestore()
+    const tokenRef = db.collection(DESCARGA_DOCS_ZIP_TOKENS).doc(tokenId)
+
+    let postulanteId: string | null = null
+    let tokenExpirado = false
+    try {
+      await db.runTransaction(async (tx) => {
+        const tokenSnap = await tx.get(tokenRef)
+        if (!tokenSnap.exists) return
+        const tdata = tokenSnap.data() as { postulanteId?: string; expiresAtMs?: number }
+        const pid = String(tdata.postulanteId || '').trim()
+        const exp = Number(tdata.expiresAtMs)
+        if (!pid || !Number.isFinite(exp)) {
+          tx.delete(tokenRef)
+          return
+        }
+        if (Date.now() > exp) {
+          tokenExpirado = true
+          tx.delete(tokenRef)
+          return
+        }
+        postulanteId = pid
+        tx.delete(tokenRef)
+      })
+    } catch (e) {
+      console.error('descargarZipDocumentosPostulanteHttp token tx', e)
+      res.status(500).send('Error interno.')
+      return
+    }
+
+    if (tokenExpirado) {
+      res.status(410).send('El enlace expiró.')
+      return
+    }
+    if (!postulanteId) {
+      res.status(404).send('Enlace inválido o ya utilizado.')
+      return
+    }
+
+    try {
+      const pSnap = await db.collection('postulantes').doc(postulanteId).get()
+      if (!pSnap.exists) {
+        res.status(404).send('Postulante no encontrado.')
+        return
+      }
+      const pdata = pSnap.data() as { documentUrls?: Record<string, string> }
+      const documentUrls =
+        pdata.documentUrls && typeof pdata.documentUrls === 'object' ? pdata.documentUrls : {}
+      const bucket = admin.storage().bucket()
+
+      const archive = archiver('zip', { zlib: { level: 0 } })
+      archive.on('error', (err: Error) => {
+        console.error('archiver error', err)
+      })
+
+      const safeName = postulanteId.replace(/[^a-zA-Z0-9._-]/g, '_').slice(0, 80)
+      res.setHeader('Content-Type', 'application/zip')
+      res.setHeader('Content-Disposition', `attachment; filename="documentos_${safeName}.zip"`)
+      archive.pipe(res)
+
+      let agregados = 0
+      for (const [docId, url] of Object.entries(documentUrls)) {
+        if (!url || typeof url !== 'string') continue
+        const path = storagePathFromDownloadUrl(url)
+        if (!path) continue
+        const file = bucket.file(path)
+        const [exists] = await file.exists()
+        if (!exists) continue
+        archive.append(file.createReadStream(), { name: nombreEntradaZip(docId) })
+        agregados++
+      }
+
+      if (agregados === 0) {
+        archive.append(Buffer.from('No hay archivos de documentación asociados a este postulante.', 'utf8'), {
+          name: 'LEEME.txt',
+        })
+      }
+
+      await archive.finalize()
+    } catch (e) {
+      console.error('descargarZipDocumentosPostulanteHttp zip', e)
+      if (!res.headersSent) res.status(500).send('Error al generar ZIP.')
     }
   },
 )
