@@ -49,8 +49,10 @@ export function FiltroRevisionDoc() {
   const [misTramosAsignados, setMisTramosAsignados] = useState<TramoVigenteEstado[]>([])
   const [todosLosTramosServidor, setTodosLosTramosServidor] = useState<TramoVigenteEstado[]>([])
   const [confirmandoLimpiarTramos, setConfirmandoLimpiarTramos] = useState(false)
+  const [confirmandoLimpiarTramosFinal, setConfirmandoLimpiarTramosFinal] = useState(false)
   const [limpiandoTramos, setLimpiandoTramos] = useState(false)
   const [errorLimpiarTramos, setErrorLimpiarTramos] = useState<string | null>(null)
+  const [confirmandoFormateoFinal, setConfirmandoFormateoFinal] = useState(false)
 
   const scrollRef = useRef<HTMLDivElement | null>(null)
   const scrollRefFinal = useRef<HTMLDivElement | null>(null)
@@ -457,8 +459,44 @@ export function FiltroRevisionDoc() {
               <button
                 type="button"
                 disabled={limpiandoTramos}
-                onClick={() => { void ejecutarLimpiarTramosDesdePantalla() }}
+                onClick={() => {
+                  setConfirmandoLimpiarTramos(false)
+                  setConfirmandoLimpiarTramosFinal(true)
+                }}
                 className="px-4 py-2 rounded-lg text-sm font-bold bg-red-600 text-white hover:bg-red-700 disabled:opacity-50"
+              >
+                Continuar
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {confirmandoLimpiarTramosFinal && (
+        <div className="fixed inset-0 z-[70] flex items-center justify-center bg-black/70 backdrop-blur-sm p-4">
+          <div className="bg-white w-full max-w-md rounded-2xl shadow-2xl p-6 space-y-4">
+            <h3 className="text-lg font-black text-rose-900">Confirmación final: acción irreversible</h3>
+            <p className="text-sm text-slate-700 leading-relaxed">
+              ¿Está seguro de quitar todos los tramos? Esta acción es irreversible: se eliminarán las asignaciones de tramos y
+              deberá volver a organizar el proceso de revisión desde 0.
+            </p>
+            {errorLimpiarTramos && (
+              <p className="text-sm text-red-700 bg-red-50 border border-red-200 rounded-lg px-3 py-2">{errorLimpiarTramos}</p>
+            )}
+            <div className="flex justify-end gap-2 pt-2">
+              <button
+                type="button"
+                disabled={limpiandoTramos}
+                onClick={() => { setConfirmandoLimpiarTramosFinal(false); setErrorLimpiarTramos(null) }}
+                className="px-4 py-2 rounded-lg text-sm border border-slate-300 text-slate-700 hover:bg-slate-50 disabled:opacity-50"
+              >
+                Cancelar
+              </button>
+              <button
+                type="button"
+                disabled={limpiandoTramos}
+                onClick={() => { void ejecutarLimpiarTramosDesdePantalla(); setConfirmandoLimpiarTramosFinal(false) }}
+                className="px-4 py-2 rounded-lg text-sm font-bold bg-rose-700 text-white hover:bg-rose-800 disabled:opacity-50"
               >
                 {limpiandoTramos ? 'Procesando…' : 'Sí, quitar tramos'}
               </button>
@@ -508,7 +546,47 @@ export function FiltroRevisionDoc() {
             <p className="text-sm text-slate-600">Se perderán todas las validaciones y rechazos de todos los postulantes del sistema. Esta acción no se puede deshacer.</p>
             <div className="flex justify-end gap-2">
               <button disabled={formateando} onClick={() => setConfirmandoFormateo(false)} className="px-4 py-2 rounded-lg text-sm border border-slate-300">Cancelar</button>
-              <button disabled={formateando} onClick={handleFormatearRevision} className="px-4 py-2 rounded-lg text-sm bg-red-600 text-white font-bold">{formateando ? 'Procesando...' : 'Sí, borrar todo'}</button>
+              <button
+                disabled={formateando}
+                onClick={() => {
+                  setConfirmandoFormateo(false)
+                  setConfirmandoFormateoFinal(true)
+                }}
+                className="px-4 py-2 rounded-lg text-sm bg-red-600 text-white font-bold"
+              >
+                Continuar
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {confirmandoFormateoFinal && (
+        <div className="fixed inset-0 z-[70] flex items-center justify-center bg-black/70 backdrop-blur-sm p-4">
+          <div className="w-full max-w-md rounded-2xl bg-white shadow-2xl p-6 space-y-4">
+            <h3 className="text-lg font-black text-rose-900">Confirmación final: acción irreversible</h3>
+            <p className="text-sm text-slate-700 leading-relaxed">
+              ¿Está seguro de formatear toda la revisión? Esta acción es irreversible: se eliminarán validaciones y rechazos de
+              la revisión actual, y tendrá que iniciar nuevamente el proceso desde 0.
+            </p>
+            <div className="flex justify-end gap-2">
+              <button
+                disabled={formateando}
+                onClick={() => setConfirmandoFormateoFinal(false)}
+                className="px-4 py-2 rounded-lg text-sm border border-slate-300"
+              >
+                Cancelar
+              </button>
+              <button
+                disabled={formateando}
+                onClick={async () => {
+                  setConfirmandoFormateoFinal(false)
+                  await handleFormatearRevision()
+                }}
+                className="px-4 py-2 rounded-lg text-sm bg-rose-700 text-white font-bold disabled:opacity-50"
+              >
+                {formateando ? 'Procesando...' : 'Sí, formatear'}
+              </button>
             </div>
           </div>
         </div>

@@ -51,6 +51,11 @@ export function AsignacionRevisoresModal({
     danger?: boolean
     onConfirm: () => void
   } | null>(null)
+  const [confirmDialogIrreversible, setConfirmDialogIrreversible] = useState<{
+    title: string
+    message: string
+    onConfirm: () => void
+  } | null>(null)
 
   const [selectedRevisor, setSelectedRevisor] = useState<string>('')
   const [startRange, setStartRange] = useState<number>(1)
@@ -225,24 +230,32 @@ export function AsignacionRevisoresModal({
       message:
         '¿Está absolutamente seguro de formatear (borrar) todas las asignaciones actuales? Esto dejará la base en blanco y los revisores quedarán sin tramos.',
       danger: true,
-      onConfirm: async () => {
+      onConfirm: () => {
         setConfirmDialog(null)
-        setSaving(true)
-        setErrorMsg(null)
-        try {
-          await limpiarTodasLasAsignacionesTramos()
-          onTramosActualizados?.()
-          setSuccessMsg(
-            'Se eliminaron todas las asignaciones por tramos. Los revisores vuelven a ver la nómina completa (pueden necesitar recargar la página).',
-          )
-          setAsignaciones([])
-          cancelarEdicion()
-          setTimeout(() => setSuccessMsg(null), 5000)
-        } catch {
-          setErrorMsg('Error crítico al formatear la base de datos.')
-        } finally {
-          setSaving(false)
-        }
+        setConfirmDialogIrreversible({
+          title: 'Confirmación final: acción irreversible',
+          message:
+            '¿Está seguro de quitar todos los tramos?\n\nEsta acción es irreversible: se eliminará toda la asignación de tramos y deberá organizar nuevamente el proceso de revisión desde 0.',
+          onConfirm: async () => {
+            setConfirmDialogIrreversible(null)
+            setSaving(true)
+            setErrorMsg(null)
+            try {
+              await limpiarTodasLasAsignacionesTramos()
+              onTramosActualizados?.()
+              setSuccessMsg(
+                'Se eliminaron todas las asignaciones por tramos. Los revisores vuelven a ver la nómina completa (pueden necesitar recargar la página).',
+              )
+              setAsignaciones([])
+              cancelarEdicion()
+              setTimeout(() => setSuccessMsg(null), 5000)
+            } catch {
+              setErrorMsg('Error crítico al formatear la base de datos.')
+            } finally {
+              setSaving(false)
+            }
+          },
+        })
       },
     })
   }
@@ -588,6 +601,45 @@ export function AsignacionRevisoresModal({
                 }`}
               >
                 {saving ? 'Procesando...' : 'Sí, confirmar'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {confirmDialogIrreversible && (
+        <div className="fixed inset-0 z-[80] flex animate-in items-center justify-center bg-black/70 p-4 backdrop-blur-sm fade-in duration-200">
+          <div className="flex w-full max-w-md flex-col overflow-hidden rounded-2xl bg-white shadow-2xl zoom-in-95 transform transition-all">
+            <div className="flex items-center gap-3 border-b border-rose-200 bg-rose-50/90 px-6 py-4">
+              <svg className="h-6 w-6 text-rose-700" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                <path
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                  strokeWidth={2.5}
+                  d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z"
+                />
+              </svg>
+              <h2 className="text-lg font-black tracking-tight text-rose-900">{confirmDialogIrreversible.title}</h2>
+            </div>
+            <div className="p-6 font-medium text-slate-700">
+              <p className="whitespace-pre-line text-sm leading-relaxed">{confirmDialogIrreversible.message}</p>
+            </div>
+            <div className="flex justify-end gap-3 border-t border-slate-100 bg-slate-50 px-6 py-4">
+              <button
+                type="button"
+                disabled={saving}
+                onClick={() => setConfirmDialogIrreversible(null)}
+                className="rounded-xl border border-slate-300 bg-white px-4 py-2.5 text-sm font-bold text-slate-600 transition-colors hover:bg-slate-100"
+              >
+                Cancelar
+              </button>
+              <button
+                type="button"
+                disabled={saving}
+                onClick={confirmDialogIrreversible.onConfirm}
+                className="rounded-xl bg-rose-700 px-4 py-2.5 text-sm font-bold text-white shadow-sm transition-colors hover:bg-rose-800 disabled:opacity-50"
+              >
+                {saving ? 'Procesando...' : 'Sí, quitar tramos'}
               </button>
             </div>
           </div>
