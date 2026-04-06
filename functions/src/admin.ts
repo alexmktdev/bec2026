@@ -424,6 +424,8 @@ export const obtenerTramosRevisores = onCall(
 
       const tramos: TramoVigenteEstado[] = tramosRaw.map((t) => {
         let totalAsignados = 0
+        let totalValidados = 0
+        let totalRechazados = 0
         let totalTerminados = 0
         for (const doc of snapshot.docs) {
           const raw = doc.data() as {
@@ -437,13 +439,19 @@ export const obtenerTramosRevisores = onCall(
           if (!Number.isFinite(orden) || orden < t.startRange || orden > t.endRange) continue
           totalAsignados += 1
           const estado = String(raw.estado || '')
-          if (estado === 'documentacion_validada' || estado === 'rechazado') {
+          if (estado === 'documentacion_validada') {
+            totalValidados += 1
+            totalTerminados += 1
+          } else if (estado === 'rechazado') {
+            totalRechazados += 1
             totalTerminados += 1
           }
         }
         return {
           ...t,
           totalAsignados,
+          totalValidados,
+          totalRechazados,
           totalTerminados,
           terminado: totalAsignados > 0 && totalTerminados >= totalAsignados,
         } satisfies TramoVigenteEstado

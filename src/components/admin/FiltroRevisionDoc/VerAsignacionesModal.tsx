@@ -61,6 +61,11 @@ export function VerAsignacionesModal({ onClose }: Props) {
                     <span className="text-[11px] text-slate-500">
                       Avance: <strong>{a.totalTerminados}</strong>/{a.totalAsignados}
                     </span>
+                    <span className="text-[11px] text-slate-600">
+                      Validados: <strong className="text-emerald-800">{a.totalValidados}</strong>
+                      {' · '}
+                      Rechazados: <strong className="text-rose-800">{a.totalRechazados}</strong>
+                    </span>
                   </div>
                   <div className="bg-emerald-100 text-emerald-800 font-black px-4 py-1.5 rounded-lg border border-emerald-200 shadow-sm">
                     {a.startRange} - {a.endRange}

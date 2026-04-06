@@ -2,11 +2,19 @@ import { httpsCallable } from 'firebase/functions'
 import { functions } from '../firebase/config'
 import type { TramoAsignacion, TramoVigenteEstado } from '../types/postulante'
 
+function normalizarTramoVigente(t: TramoVigenteEstado): TramoVigenteEstado {
+  return {
+    ...t,
+    totalValidados: typeof t.totalValidados === 'number' ? t.totalValidados : 0,
+    totalRechazados: typeof t.totalRechazados === 'number' ? t.totalRechazados : 0,
+  }
+}
+
 export async function obtenerTramos(): Promise<TramoVigenteEstado[]> {
   try {
     const fn = httpsCallable<void, { tramos: TramoVigenteEstado[] }>(functions, 'obtenerTramosRevisores')
     const { data } = await fn()
-    return data.tramos || []
+    return (data.tramos || []).map(normalizarTramoVigente)
   } catch (error) {
     console.error('Error al obtener tramos:', error)
     return []

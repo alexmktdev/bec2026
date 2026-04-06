@@ -110,6 +110,10 @@ export interface TramoAsignacion {
 
 export interface TramoVigenteEstado extends TramoAsignacion {
   totalAsignados: number
+  /** Postulantes con documentación validada dentro del tramo. */
+  totalValidados: number
+  /** Postulantes rechazados dentro del tramo. */
+  totalRechazados: number
   totalTerminados: number
   terminado: boolean
 }
