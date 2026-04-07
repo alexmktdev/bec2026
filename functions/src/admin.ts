@@ -1,5 +1,6 @@
 import './functionsInit'
 import { randomUUID } from 'node:crypto'
+import type { IncomingMessage, ServerResponse } from 'node:http'
 import * as admin from 'firebase-admin'
 import { DocumentReference, GeoPoint, Timestamp, type DocumentSnapshot } from 'firebase-admin/firestore'
 import { HttpsError, onCall, onRequest } from 'firebase-functions/v2/https'
@@ -15,6 +16,7 @@ import {
   obtenerSnapshotsPostulantesPorIds,
   ordenarDocsPostulantesComoEnPanel,
 } from './postulantesOrdenPanel'
+import { aplicarCorsZipDocumentacionCompleta } from './allowedWebOrigins'
 import { webCallableBase } from './httpsCallableDefaults'
 import { calcularPuntajeTotal } from '../../src/postulacion/shared/scoring'
 
@@ -168,8 +170,137 @@ const DOC_ZIP_ENTRY_NAMES: Record<string, string> = {
 const DESCARGA_DOCS_ZIP_TOKENS = 'descarga_docs_zip_tokens'
 const DESCARGA_DOCS_ZIP_TTL_MS = 7 * 24 * 60 * 60 * 1000
 
+/** Un solo doc Firestore por export Excel (evita miles de escrituras de tokens). */
+const EXCEL_ZIP_EXPORT_BATCHES = 'excel_zip_export_batches'
+const EXCEL_ZIP_BATCH_TTL_MS = 72 * 60 * 60 * 1000
+
+/** Consultas `file.exists()` a Storage en paralelo (ZIP masivo). */
+const STORAGE_EXISTS_PARALLEL = 220
+
 function nombreEntradaZip(docId: string): string {
   return DOC_ZIP_ENTRY_NAMES[docId] ?? `${docId}.pdf`
+}
+
+async function streamZipDocumentosPostulanteHttp(
+  res: ServerResponse,
+  postulanteId: string,
+  pdata: {
+    documentUrls?: Record<string, string>
+    rut?: unknown
+    nombres?: unknown
+    apellidoPaterno?: unknown
+    apellidoMaterno?: unknown
+  },
+): Promise<void> {
+  const documentUrls =
+    pdata.documentUrls && typeof pdata.documentUrls === 'object' ? pdata.documentUrls : {}
+  const bucket = admin.storage().bucket()
+  const carpeta = carpetaRaizZipPostulante(pdata, postulanteId)
+  const archive = archiver('zip', { zlib: { level: 0 } })
+  archive.on('error', (err: Error) => {
+    console.error('archiver error', err)
+  })
+  const safeZipFileName = carpeta.replace(/[^a-zA-Z0-9._-]/g, '_').slice(0, 80) || postulanteId.slice(0, 40)
+  res.setHeader('Content-Type', 'application/zip')
+  res.setHeader('Content-Disposition', `attachment; filename="documentos_${safeZipFileName}.zip"`)
+  archive.pipe(res)
+
+  let agregados = 0
+  for (const [docId, url] of Object.entries(documentUrls)) {
+    if (!url || typeof url !== 'string') continue
+    const path = storagePathFromDownloadUrl(url)
+    if (!path) continue
+    const file = bucket.file(path)
+    const [exists] = await file.exists()
+    if (!exists) continue
+    archive.append(file.createReadStream(), { name: `${carpeta}/${nombreEntradaZip(docId)}` })
+    agregados++
+  }
+
+  if (agregados === 0) {
+    archive.append(Buffer.from('No hay archivos de documentación asociados a este postulante.', 'utf8'), {
+      name: `${carpeta}/LEEME.txt`,
+    })
+  }
+
+  await archive.finalize()
+}
+
+async function streamZipDocumentacionCompletaMasiva(
+  res: ServerResponse,
+  permitidos: { id: string; pdata: Record<string, unknown> }[],
+): Promise<void> {
+  const bucket = admin.storage().bucket()
+  const archive = archiver('zip', { zlib: { level: 0 } })
+  archive.on('error', (err: Error) => console.error('archiver masivo', err))
+
+  res.setHeader('Content-Type', 'application/zip')
+  res.setHeader(
+    'Content-Disposition',
+    `attachment; filename="documentos_postulantes_${new Date().toISOString().slice(0, 10)}.zip"`,
+  )
+  archive.pipe(res)
+
+  const root = 'carpeta_postulaciones'
+  const docOrderByPrefix = new Map<string, string[]>()
+  const pending: { prefix: string; docId: string; file: ReturnType<typeof bucket.file> }[] = []
+
+  for (const { id, pdata } of permitidos) {
+    const documentUrls =
+      pdata.documentUrls && typeof pdata.documentUrls === 'object' && pdata.documentUrls !== null
+        ? (pdata.documentUrls as Record<string, string>)
+        : {}
+    const carpeta = carpetaRaizZipPostulante(pdata, id)
+    const prefix = `${root}/${carpeta}`
+    const keys = Object.entries(documentUrls)
+      .filter(([, url]) => url && typeof url === 'string')
+      .map(([k]) => k)
+    docOrderByPrefix.set(prefix, keys)
+
+    for (const [docId, url] of Object.entries(documentUrls)) {
+      if (!url || typeof url !== 'string') continue
+      const path = storagePathFromDownloadUrl(url)
+      if (!path) continue
+      pending.push({ prefix, docId, file: bucket.file(path) })
+    }
+  }
+
+  const ok: { prefix: string; docId: string; file: ReturnType<typeof bucket.file> }[] = []
+  for (let i = 0; i < pending.length; i += STORAGE_EXISTS_PARALLEL) {
+    const slice = pending.slice(i, i + STORAGE_EXISTS_PARALLEL)
+    const hits = await Promise.all(
+      slice.map(async (j) => ((await j.file.exists())[0] ? j : null)),
+    )
+    for (const h of hits) {
+      if (h) ok.push(h)
+    }
+  }
+
+  const byPrefix = new Map<string, { prefix: string; docId: string; file: ReturnType<typeof bucket.file> }[]>()
+  for (const j of ok) {
+    const arr = byPrefix.get(j.prefix) ?? []
+    arr.push(j)
+    byPrefix.set(j.prefix, arr)
+  }
+
+  for (const { id, pdata } of permitidos) {
+    const carpeta = carpetaRaizZipPostulante(pdata, id)
+    const prefix = `${root}/${carpeta}`
+    const orden = docOrderByPrefix.get(prefix) ?? []
+    let list = byPrefix.get(prefix) ?? []
+    list = [...list].sort((a, b) => orden.indexOf(a.docId) - orden.indexOf(b.docId))
+    if (list.length === 0) {
+      archive.append(Buffer.from('Sin archivos en Storage para este postulante.', 'utf8'), {
+        name: `${prefix}/LEEME.txt`,
+      })
+    } else {
+      for (const j of list) {
+        archive.append(j.file.createReadStream(), { name: `${prefix}/${nombreEntradaZip(j.docId)}` })
+      }
+    }
+  }
+
+  await archive.finalize()
 }
 
 /** Carpeta raíz dentro del ZIP: RUT + nombres + apellidos (alineado con `src/services/zipDownload.ts`). */
@@ -1191,8 +1322,8 @@ export const emitirEnlaceDescargaZipDocumentos = onCall(
 )
 
 const LOTE_ZIP_MAX_FILAS = 3000
-const LOTE_ZIP_GETALL_CHUNK = 30
-const LOTE_ZIP_BATCH_WRITE = 450
+/** Admin SDK permite muchos refs por `getAll`; trozos en paralelo acelera el export Excel. */
+const LOTE_ZIP_GETALL_CHUNK = 120
 
 function chunkArray<T>(arr: T[], size: number): T[][] {
   const out: T[][] = []
@@ -1206,7 +1337,7 @@ function chunkArray<T>(arr: T[], size: number): T[][] {
  * Revisores: solo filas cuyo postulante tenga `assignedTo` = uid del llamante (las demás quedan token vacío en la respuesta).
  */
 export const emitirEnlacesDescargaZipDocumentosLote = onCall(
-  { ...webCallableBase(), memory: '512MiB', timeoutSeconds: 120, maxInstances: 10 },
+  { ...webCallableBase(), memory: '256MiB', timeoutSeconds: 60, maxInstances: 20 },
   async (request) => {
     const callerUid = request.auth?.uid
     if (!callerUid) throw new HttpsError('unauthenticated', 'Debe iniciar sesión.')
@@ -1233,19 +1364,22 @@ export const emitirEnlacesDescargaZipDocumentosLote = onCall(
 
     const idsParaLeer = [...new Set(postulanteIds.filter((id) => id.length > 0))]
     const snapsMap = new Map<string, DocumentSnapshot>()
-    for (const part of chunkArray(
+    const refChunks = chunkArray(
       idsParaLeer.map((id) => db.collection('postulantes').doc(id)),
       LOTE_ZIP_GETALL_CHUNK,
-    )) {
-      if (part.length === 0) continue
-      const snaps = await db.getAll(...part)
+    )
+    const snapBatches = await Promise.all(
+      refChunks.map((part) => (part.length ? db.getAll(...part) : Promise.resolve([]))),
+    )
+    for (const snaps of snapBatches) {
       for (const s of snaps) {
         if (s.exists) snapsMap.set(s.id, s)
       }
     }
 
-    const outTokens: string[] = new Array(postulanteIds.length).fill('')
-    const tokenWrites: { tokenId: string; postulanteId: string }[] = []
+    /** Por fila: id del postulante si puede descargar; el cliente arma `?b=&p=` con `batchId`. */
+    const tokens: string[] = new Array(postulanteIds.length).fill('')
+    const allowedSet = new Set<string>()
 
     for (let i = 0; i < postulanteIds.length; i++) {
       const id = postulanteIds[i]
@@ -1258,27 +1392,22 @@ export const emitirEnlacesDescargaZipDocumentosLote = onCall(
       } catch {
         continue
       }
-      const tokenId = randomUUID()
-      tokenWrites.push({ tokenId, postulanteId: id })
-      outTokens[i] = tokenId
+      tokens[i] = id
+      allowedSet.add(id)
     }
 
-    const coll = db.collection(DESCARGA_DOCS_ZIP_TOKENS)
-    const now = new Date().toISOString()
-    const exp = Date.now() + DESCARGA_DOCS_ZIP_TTL_MS
-
-    for (const part of chunkArray(tokenWrites, LOTE_ZIP_BATCH_WRITE)) {
-      if (part.length === 0) continue
-      const batch = db.batch()
-      for (const { tokenId, postulanteId } of part) {
-        batch.set(coll.doc(tokenId), {
-          postulanteId,
-          createdAt: now,
-          expiresAtMs: exp,
+    let batchId = ''
+    if (allowedSet.size > 0) {
+      batchId = randomUUID()
+      await db
+        .collection(EXCEL_ZIP_EXPORT_BATCHES)
+        .doc(batchId)
+        .set({
+          postulanteIds: [...allowedSet],
+          expiresAtMs: Date.now() + EXCEL_ZIP_BATCH_TTL_MS,
+          createdAt: new Date().toISOString(),
           createdByUid: callerUid,
         })
-      }
-      await batch.commit()
     }
 
     await writeAuditLog(
@@ -1287,16 +1416,17 @@ export const emitirEnlacesDescargaZipDocumentosLote = onCall(
       email,
       'EMITIR_ENLACES_ZIP_DOCS_LOTE',
       'LOTE_EXCEL',
-      `Tokens ZIP documentación: ${tokenWrites.length} emitidos sobre ${postulanteIds.length} filas solicitadas.`,
+      `Export Excel ZIP: batch ${batchId || '(vacío)'} con ${allowedSet.size} postulantes únicos sobre ${postulanteIds.length} filas.`,
     )
 
-    return { tokens: outTokens }
+    return { batchId, tokens }
   },
 )
 
 /**
- * GET público con token opaco: genera el ZIP y elimina el token al terminar.
- * No usa Firebase Auth en el navegador; la seguridad es el token de un solo uso + expiración.
+ * GET público:
+ * - `?t=` token Firestore de un solo uso (panel / enlace individual).
+ * - `?b=&p=` lote de export Excel (varios usos hasta expirar el lote; `p` = id postulante).
  */
 export const descargarZipDocumentosPostulanteHttp = onRequest(
   {
@@ -1318,47 +1448,75 @@ export const descargarZipDocumentosPostulanteHttp = onRequest(
     }
 
     const tokenId = String((req.query as { t?: string }).t ?? '').trim()
-    if (!tokenId) {
-      res.status(400).send('Parámetro t requerido.')
-      return
-    }
+    const batchId = String((req.query as { b?: string }).b ?? '').trim()
+    const pidFromBatch = String((req.query as { p?: string }).p ?? '').trim()
 
     const db = admin.firestore()
-    const tokenRef = db.collection(DESCARGA_DOCS_ZIP_TOKENS).doc(tokenId)
 
     let postulanteId: string | null = null
     let tokenExpirado = false
-    try {
-      await db.runTransaction(async (tx) => {
-        const tokenSnap = await tx.get(tokenRef)
-        if (!tokenSnap.exists) return
-        const tdata = tokenSnap.data() as { postulanteId?: string; expiresAtMs?: number }
-        const pid = String(tdata.postulanteId || '').trim()
-        const exp = Number(tdata.expiresAtMs)
-        if (!pid || !Number.isFinite(exp)) {
-          tx.delete(tokenRef)
-          return
-        }
-        if (Date.now() > exp) {
-          tokenExpirado = true
-          tx.delete(tokenRef)
-          return
-        }
-        postulanteId = pid
-        tx.delete(tokenRef)
-      })
-    } catch (e) {
-      console.error('descargarZipDocumentosPostulanteHttp token tx', e)
-      res.status(500).send('Error interno.')
-      return
-    }
 
-    if (tokenExpirado) {
-      res.status(410).send('El enlace expiró.')
-      return
-    }
-    if (!postulanteId) {
-      res.status(404).send('Enlace inválido o ya utilizado.')
+    if (tokenId) {
+      const tokenRef = db.collection(DESCARGA_DOCS_ZIP_TOKENS).doc(tokenId)
+      try {
+        await db.runTransaction(async (tx) => {
+          const tokenSnap = await tx.get(tokenRef)
+          if (!tokenSnap.exists) return
+          const tdata = tokenSnap.data() as { postulanteId?: string; expiresAtMs?: number }
+          const pid = String(tdata.postulanteId || '').trim()
+          const exp = Number(tdata.expiresAtMs)
+          if (!pid || !Number.isFinite(exp)) {
+            tx.delete(tokenRef)
+            return
+          }
+          if (Date.now() > exp) {
+            tokenExpirado = true
+            tx.delete(tokenRef)
+            return
+          }
+          postulanteId = pid
+          tx.delete(tokenRef)
+        })
+      } catch (e) {
+        console.error('descargarZipDocumentosPostulanteHttp token tx', e)
+        res.status(500).send('Error interno.')
+        return
+      }
+
+      if (tokenExpirado) {
+        res.status(410).send('El enlace expiró.')
+        return
+      }
+      if (!postulanteId) {
+        res.status(404).send('Enlace inválido o ya utilizado.')
+        return
+      }
+    } else if (batchId && pidFromBatch) {
+      const batchSnap = await db.collection(EXCEL_ZIP_EXPORT_BATCHES).doc(batchId).get()
+      if (!batchSnap.exists) {
+        res.status(404).send('Enlace de exportación inválido.')
+        return
+      }
+      const bdata = batchSnap.data() as { expiresAtMs?: number; postulanteIds?: unknown }
+      const exp = Number(bdata.expiresAtMs)
+      if (!Number.isFinite(exp) || exp <= 0) {
+        res.status(404).send('Enlace de exportación inválido.')
+        return
+      }
+      if (Date.now() > exp) {
+        res.status(410).send('El enlace de exportación expiró.')
+        return
+      }
+      const raw = bdata.postulanteIds
+      const allowed =
+        Array.isArray(raw) ? raw.map((x) => String(x ?? '').trim()).filter((s) => s.length > 0) : []
+      if (!allowed.includes(pidFromBatch)) {
+        res.status(403).send('Este postulante no está en esta exportación.')
+        return
+      }
+      postulanteId = pidFromBatch
+    } else {
+      res.status(400).send('Use ?t= (token) o ?b= y &p= (export Excel).')
       return
     }
 
@@ -1375,42 +1533,152 @@ export const descargarZipDocumentosPostulanteHttp = onRequest(
         apellidoPaterno?: unknown
         apellidoMaterno?: unknown
       }
-      const documentUrls =
-        pdata.documentUrls && typeof pdata.documentUrls === 'object' ? pdata.documentUrls : {}
-      const bucket = admin.storage().bucket()
-      const carpeta = carpetaRaizZipPostulante(pdata, postulanteId)
-
-      const archive = archiver('zip', { zlib: { level: 0 } })
-      archive.on('error', (err: Error) => {
-        console.error('archiver error', err)
-      })
-
-      const safeZipFileName = carpeta.replace(/[^a-zA-Z0-9._-]/g, '_').slice(0, 80) || postulanteId.slice(0, 40)
-      res.setHeader('Content-Type', 'application/zip')
-      res.setHeader('Content-Disposition', `attachment; filename="documentos_${safeZipFileName}.zip"`)
-      archive.pipe(res)
-
-      let agregados = 0
-      for (const [docId, url] of Object.entries(documentUrls)) {
-        if (!url || typeof url !== 'string') continue
-        const path = storagePathFromDownloadUrl(url)
-        if (!path) continue
-        const file = bucket.file(path)
-        const [exists] = await file.exists()
-        if (!exists) continue
-        archive.append(file.createReadStream(), { name: `${carpeta}/${nombreEntradaZip(docId)}` })
-        agregados++
-      }
-
-      if (agregados === 0) {
-        archive.append(Buffer.from('No hay archivos de documentación asociados a este postulante.', 'utf8'), {
-          name: `${carpeta}/LEEME.txt`,
-        })
-      }
-
-      await archive.finalize()
+      await streamZipDocumentosPostulanteHttp(res as unknown as ServerResponse, postulanteId, pdata)
     } catch (e) {
       console.error('descargarZipDocumentosPostulanteHttp zip', e)
+      if (!res.headersSent) res.status(500).send('Error al generar ZIP.')
+    }
+  },
+)
+
+const ZIP_MASIVO_MAX_IDS = 3000
+
+type ReqHttpConBody = { body?: unknown } & Pick<IncomingMessage, 'on'>
+
+async function leerCuerpoJsonHttp(req: ReqHttpConBody): Promise<{ postulanteIds?: unknown }> {
+  const b = req.body
+  if (b && typeof b === 'object' && b !== null && !Buffer.isBuffer(b)) {
+    return b as { postulanteIds?: unknown }
+  }
+  const chunks: Buffer[] = []
+  await new Promise<void>((resolve, reject) => {
+    req.on('data', (c: Buffer) => chunks.push(c))
+    req.on('end', () => resolve())
+    req.on('error', reject)
+  })
+  const raw = Buffer.concat(chunks).toString('utf8')
+  if (!raw.trim()) return {}
+  return JSON.parse(raw) as { postulanteIds?: unknown }
+}
+
+/**
+ * POST JSON `{ postulanteIds: string[] }` con `Authorization: Bearer <Firebase ID token>`.
+ * Genera un ZIP con estructura `carpeta_postulaciones/…` (misma idea que el panel) leyendo desde Storage en el servidor.
+ */
+export const descargarZipDocumentacionCompletaHttp = onRequest(
+  {
+    region: 'southamerica-west1',
+    /** CORS lo aplica el handler (preflight + `Authorization`); ver `aplicarCorsZipDocumentacionCompleta`. */
+    cors: false,
+    invoker: 'public',
+    memory: '2GiB',
+    timeoutSeconds: 900,
+    maxInstances: 12,
+  },
+  async (req, res) => {
+    if (aplicarCorsZipDocumentacionCompleta(req, res)) return
+
+    if (req.method !== 'POST') {
+      res.status(405).set('Allow', 'POST').send('Use POST')
+      return
+    }
+
+    const authHeader = req.headers.authorization
+    if (!authHeader?.startsWith('Bearer ')) {
+      res.status(401).send('Se requiere Authorization: Bearer <token>')
+      return
+    }
+    const idToken = authHeader.slice(7).trim()
+    if (!idToken) {
+      res.status(401).send('Token vacío.')
+      return
+    }
+
+    let decoded: admin.auth.DecodedIdToken
+    try {
+      decoded = await admin.auth().verifyIdToken(idToken)
+    } catch {
+      res.status(401).send('Token inválido.')
+      return
+    }
+
+    let body: { postulanteIds?: unknown }
+    try {
+      body = await leerCuerpoJsonHttp(req as ReqHttpConBody)
+    } catch {
+      res.status(400).send('JSON inválido.')
+      return
+    }
+
+    const rawIds = body.postulanteIds
+    if (!Array.isArray(rawIds) || rawIds.length === 0) {
+      res.status(400).send('postulanteIds requerido (arreglo no vacío).')
+      return
+    }
+    const postulanteIds = [...new Set(rawIds.map((x) => String(x ?? '').trim()).filter((s) => s.length > 0))]
+    if (postulanteIds.length > ZIP_MASIVO_MAX_IDS) {
+      res.status(400).send(`Máximo ${ZIP_MASIVO_MAX_IDS} postulantes por descarga.`)
+      return
+    }
+
+    const db = admin.firestore()
+    let email: string
+    try {
+      const x = await assertRevisorOrAdmin(decoded.uid, db, decoded.email)
+      email = x.email
+    } catch {
+      res.status(403).send('Sin permisos.')
+      return
+    }
+
+    const userDoc = await db.collection('users').doc(decoded.uid).get()
+    const role = String(userDoc.data()?.role || '').toLowerCase().trim()
+
+    const refChunks = chunkArray(
+      postulanteIds.map((id) => db.collection('postulantes').doc(id)),
+      LOTE_ZIP_GETALL_CHUNK,
+    )
+    const snapBatches = await Promise.all(
+      refChunks.map((part) => (part.length ? db.getAll(...part) : Promise.resolve([]))),
+    )
+    const snapsMap = new Map<string, DocumentSnapshot>()
+    for (const snaps of snapBatches) {
+      for (const s of snaps) {
+        if (s.exists) snapsMap.set(s.id, s)
+      }
+    }
+
+    const permitidos: { id: string; pdata: Record<string, unknown> }[] = []
+    for (const id of postulanteIds) {
+      const snap = snapsMap.get(id)
+      if (!snap?.exists) continue
+      const pdata = snap.data() as { assignedTo?: unknown }
+      try {
+        assertPuedeDescargarDocumentosPostulante(decoded.uid, role, pdata)
+      } catch {
+        continue
+      }
+      permitidos.push({ id, pdata: pdata as Record<string, unknown> })
+    }
+
+    if (permitidos.length === 0) {
+      res.status(404).send('No hay documentación accesible para descargar.')
+      return
+    }
+
+    await writeAuditLog(
+      db,
+      decoded.uid,
+      email,
+      'DESCARGA_ZIP_COMPLETA_HTTP',
+      'MASIVO',
+      `ZIP masivo servidor: ${permitidos.length} postulantes.`,
+    )
+
+    try {
+      await streamZipDocumentacionCompletaMasiva(res as unknown as ServerResponse, permitidos)
+    } catch (e) {
+      console.error('descargarZipDocumentacionCompletaHttp', e)
       if (!res.headersSent) res.status(500).send('Error al generar ZIP.')
     }
   },

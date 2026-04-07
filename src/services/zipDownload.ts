@@ -3,6 +3,7 @@ import { saveAs } from 'file-saver'
 import { ref, getBlob } from 'firebase/storage'
 import { storage } from '../firebase/config'
 import type { PostulanteFirestore } from '../types/postulante'
+import { solicitarDescargaZipCompleta } from './descargaZipPostulanteService'
 import { generarReporteIndividualPDF } from './pdfGenerator'
 
 /** Descargas simultáneas a Storage (evita saturar red y el navegador) */
@@ -119,42 +120,14 @@ export async function descargarDocumentosPostulante(postulante: PostulanteFirest
   saveAs(blob, `documentos_${nombre}.zip`)
 }
 
-type TareaDescargaMasiva = {
-  folder: JSZip
-  docId: string
-  url: string
-  rut: string
-}
-
-/** ZIP masivo: solo archivos subidos a Storage (sin reporte PDF por postulante). */
+/** ZIP masivo: el servidor arma el ZIP desde Storage (una petición, más rápido y estable). */
 export async function descargarTodosDocumentos(postulantes: PostulanteFirestore[]) {
-  const zip = new JSZip()
-  const root = zip.folder('carpeta_postulaciones')!
+  if (postulantes.length === 0) return
+  const ids = postulantes
+    .map((p) => (typeof p.id === 'string' ? p.id.trim() : ''))
+    .filter((id): id is string => id.length > 0)
+  if (ids.length === 0) return
 
-  const tareas: TareaDescargaMasiva[] = []
-
-  for (const p of postulantes) {
-    const rut = (p.rut || '').replace(/\./g, '')
-    const folderName = sanitizeName(`${rut}_${p.nombres || ''}_${p.apellidoPaterno || ''}`)
-    const folder = root.folder(folderName)!
-
-    if (p.documentUrls && Object.keys(p.documentUrls).length > 0) {
-      for (const [docId, url] of Object.entries(p.documentUrls)) {
-        if (!url || typeof url !== 'string') continue
-        tareas.push({ folder, docId, url, rut: p.rut || rut })
-      }
-    }
-  }
-
-  await ejecutarConLimite(tareas, DESCARGAS_PARALELAS_MAX, async (t) => {
-    try {
-      const blob = await descargarArchivo(t.url)
-      t.folder.file(nombreArchivo(t.docId), blob, ZIP_FILE_OPTS)
-    } catch (err) {
-      console.warn(`No se pudo descargar ${t.docId} para ${t.rut}:`, err)
-    }
-  })
-
-  const blob = await zip.generateAsync(ZIP_GENERATE_OPTS)
+  const blob = await solicitarDescargaZipCompleta(ids)
   saveAs(blob, `documentos_postulantes_${new Date().toISOString().slice(0, 10)}.zip`)
 }

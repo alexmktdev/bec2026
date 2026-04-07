@@ -3,8 +3,7 @@ import { saveAs } from 'file-saver'
 import type { PostulanteFirestore } from '../types/postulante'
 import { formatDate } from '../utils/inputFormatters'
 import { resumenCuentaBancariaListado } from '../utils/cuentaBancariaDisplay'
-import { prepareCallableSecurity } from '../firebase/config'
-import { emitirEnlaceDescargaZipDocumentos } from './descargaZipPostulanteService'
+import { emitirEnlacesDescargaZipDocumentosLote } from './descargaZipPostulanteService'
 
 const COLUMNS: { header: string; key: string; width: number }[] = [
   { header: 'Nombres', key: 'nombres', width: 20 },
@@ -109,40 +108,29 @@ function rowValuesInOrder(p: PostulanteFirestore): unknown[] {
 const COLUMNAS_MANUAL_FINAL = [
   { header: 'Revisor designado', width: 22 },
   { header: 'Estado', width: 14 },
-  { header: 'Link descarga documentación (ZIP)', width: 72 },
+  { header: 'Descarga documentación', width: 28 },
 ] as const
 
-async function enlacesZipEnParalelo(postulantes: PostulanteFirestore[], limite: number): Promise<string[]> {
-  const n = postulantes.length
-  const resultados = new Array<string>(n)
-  let idx = 0
+/** Texto visible del hipervínculo (la URL va en el destino del clic, no en la celda). */
+const TEXTO_CELDA_LINK_ZIP = 'Descargar documentación (ZIP)'
 
-  async function worker(): Promise<void> {
-    for (;;) {
-      const i = idx++
-      if (i >= n) return
-      const p = postulantes[i]
-      const id = typeof p.id === 'string' ? p.id.trim() : ''
-      if (!id) {
-        resultados[i] = ''
-        continue
-      }
-      try {
-        resultados[i] = await emitirEnlaceDescargaZipDocumentos(id)
-      } catch {
-        resultados[i] = ''
-      }
-    }
+/** Excel a veces ignora `text`+`hyperlink` en ExcelJS; `HYPERLINK` fuerza el texto visible. */
+function valorCeldaHipervinculoZip(url: string, textoVisible: string): ExcelJS.CellValue {
+  const esc = (s: string) => s.replace(/"/g, '""')
+  return {
+    formula: `HYPERLINK("${esc(url)}","${esc(textoVisible)}")`,
+    result: textoVisible,
   }
-
-  const workers = Math.max(1, Math.min(limite, n))
-  await Promise.all(Array.from({ length: workers }, () => worker()))
-  return resultados
 }
 
 export async function exportarExcel(postulantes: PostulanteFirestore[]) {
-  await prepareCallableSecurity()
-  const enlacesZip = await enlacesZipEnParalelo(postulantes, 4)
+  const postulanteIds = postulantes.map((p) => (typeof p.id === 'string' ? p.id.trim() : ''))
+  let enlacesZip: string[] = []
+  try {
+    enlacesZip = await emitirEnlacesDescargaZipDocumentosLote(postulanteIds)
+  } catch {
+    enlacesZip = postulanteIds.map(() => '')
+  }
 
   const workbook = new ExcelJS.Workbook()
   const sheet = workbook.addWorksheet('Postulantes')
@@ -157,10 +145,16 @@ export async function exportarExcel(postulantes: PostulanteFirestore[]) {
     sheet.getColumn(COLUMNS.length + j + 1).width = col.width
   })
 
+  const colLink = COLUMNS.length + 3
   for (let i = 0; i < postulantes.length; i++) {
     const p = postulantes[i]
-    const fila = [...rowValuesInOrder(p), '', '', enlacesZip[i] ?? '']
-    sheet.addRow(fila)
+    const url = (enlacesZip[i] ?? '').trim()
+    const row = sheet.addRow([...rowValuesInOrder(p), '', '', ''])
+    const linkCell = row.getCell(colLink)
+    if (url) {
+      linkCell.value = valorCeldaHipervinculoZip(url, TEXTO_CELDA_LINK_ZIP)
+      linkCell.font = { color: { argb: 'FF0563C1' }, underline: true }
+    }
   }
 
   const buffer = await workbook.xlsx.writeBuffer()

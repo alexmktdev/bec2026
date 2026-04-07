@@ -65,5 +65,10 @@ service cloud.firestore {
     match /descarga_docs_zip_tokens/{tokenId} {
       allow read, write: if false;
     }
+
+    // Lotes de enlaces del export Excel (solo Admin SDK; un doc por export, no por fila)
+    match /excel_zip_export_batches/{batchId} {
+      allow read, write: if false;
+    }
   }
 }
