@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import { useAdminFilter } from '../../contexts/AdminFilterContext'
 import { AdminLayout } from './AdminLayout'
 import { exportarExcel } from '../../services/excelExport'
@@ -7,6 +7,7 @@ import type { PostulanteFirestore } from '../../types/postulante'
 import { formatDate } from '../../utils/inputFormatters'
 import { resumenCuentaBancariaListado } from '../../utils/cuentaBancariaDisplay'
 import { ZipDownloadBriefNotice } from './ZipDownloadBriefNotice'
+import { TablePagination } from './TablePagination'
 import {
   obtenerRankingDesempate,
   type EmpatesResumenDesempate,
@@ -18,6 +19,8 @@ import {
   clearCriterioDesempateConfig,
   type CriterioDesempate,
 } from '../../services/filtroConfigService'
+
+const ITEMS_POR_PAGINA_DESEMPATE = 10
 
 const TD = 'px-3 py-2 text-xs text-slate-700 whitespace-nowrap border-b border-slate-100'
 const TH = 'px-3 py-2.5 text-left text-[10px] font-bold uppercase tracking-widest text-slate-500 whitespace-nowrap bg-slate-50 border-b border-slate-200'
@@ -75,7 +78,17 @@ export function FiltroDesempate() {
   const [exportando, setExportando] = useState<string | null>(null)
   const [empatesResumen, setEmpatesResumen] = useState<EmpatesResumenDesempate>(EMPATES_VACIO)
   const [fuenteVistaPuntaje, setFuenteVistaPuntaje] = useState<FuenteVistaPuntajeDesempate | null>(null)
+  const [paginaTabla, setPaginaTabla] = useState(1)
   const scrollRef = useRef<HTMLDivElement>(null)
+
+  useEffect(() => {
+    setPaginaTabla(1)
+  }, [listaOrdenada])
+
+  const filasPaginaDesempate = useMemo(() => {
+    const start = (paginaTabla - 1) * ITEMS_POR_PAGINA_DESEMPATE
+    return listaOrdenada.slice(start, start + ITEMS_POR_PAGINA_DESEMPATE)
+  }, [listaOrdenada, paginaTabla])
 
   const cargarRanking = async (criterio: CriterioDesempate | null) => {
     setLoading(true)
@@ -231,7 +244,7 @@ export function FiltroDesempate() {
             </div>
           </div>
 
-          {/* Empates restantes (clave según criterio acumulado; backend) */}
+          {/* Empates restantes (agrupación por “huella” de puntajes según criterio; backend) */}
           {listaOrdenada.length > 0 && (
             <div
               className={`rounded-xl border p-4 shadow-sm ${
@@ -261,9 +274,12 @@ export function FiltroDesempate() {
                       : 'Sin empates restantes con el filtro actual'}
                   </h3>
                   <p className="mt-1 text-xs leading-relaxed text-slate-700">
-                    Se considera empate cuando dos o más personas coinciden en{' '}
-                    <strong>{descripcionClaveEmpate(criterioSeleccionado)}</strong>. El orden de la tabla sigue el orden
-                    oficial del servidor (incluye desempates adicionales cuando aplica).
+                    <strong>¿Qué es la «clave»?</strong> En el servidor no es una contraseña: es una{' '}
+                    <strong>huella</strong> que resume los valores que ya se usaron para comparar (puntaje total y, según
+                    el menú, NEM, RSH, enfermedad, hermanos, fecha/hora). Dos postulantes están en el mismo grupo de
+                    empate si esa huella es idéntica — es decir, si coinciden en{' '}
+                    <strong>{descripcionClaveEmpate(criterioSeleccionado)}</strong>. El orden de la tabla sigue el
+                    criterio oficial del servidor (incluye desempates finos cuando aplica).
                   </p>
                   <p className="mt-1 text-xs text-slate-600">
                     {criterioSeleccionado === 'none'
@@ -283,7 +299,8 @@ export function FiltroDesempate() {
                       {empatesResumen.detalleGrupos.map((grupo, idx) => (
                         <div key={`emp-${idx}-${grupo.postulantes[0]?.id ?? ''}`} className="rounded-lg border border-amber-200 bg-white/70 p-2.5">
                           <p className="text-xs font-bold text-amber-900 mb-1">
-                            {grupo.puntajeTotal} pts. · {grupo.cantidad} postulantes con la misma clave
+                            {grupo.puntajeTotal} pts. · {grupo.cantidad} postulantes con la misma huella de criterios
+                            (indistinguibles con el filtro actual)
                           </p>
                           <ul className="list-disc list-inside text-[11px] text-amber-900/90 space-y-0.5">
                             {grupo.postulantes.map((p) => (
@@ -476,11 +493,14 @@ export function FiltroDesempate() {
                       </tr>
                     </thead>
                     <tbody>
-                      {listaOrdenada.map((p, idx) => {
-                        const pos = idx + 1
+                      {filasPaginaDesempate.map((p, idx) => {
+                        const pos = (paginaTabla - 1) * ITEMS_POR_PAGINA_DESEMPATE + idx + 1
                         const isTop150 = pos <= 150
                         return (
-                          <tr key={p.id} className={`group transition-colors hover:bg-slate-50 ${isTop150 ? 'bg-emerald-50/40' : ''}`}>
+                          <tr
+                            key={`${String(p.id ?? '')}-${pos}`}
+                            className={`group transition-colors hover:bg-slate-50 ${isTop150 ? 'bg-emerald-50/40' : ''}`}
+                          >
                             <td className={`sticky left-0 z-10 border-r border-slate-200 px-2 py-2 text-center text-sm font-bold text-slate-700 border-b border-slate-100 group-hover:bg-slate-50 ${isTop150 ? 'bg-emerald-50/70' : 'bg-white'}`}>
                               {pos}
                             </td>
@@ -527,11 +547,20 @@ export function FiltroDesempate() {
                   </table>
                 </div>
 
+                <div className="border-t border-slate-200 bg-slate-50/80 px-3">
+                  <TablePagination
+                    totalItems={listaOrdenada.length}
+                    itemsPerPage={ITEMS_POR_PAGINA_DESEMPATE}
+                    currentPage={paginaTabla}
+                    onPageChange={setPaginaTabla}
+                  />
+                </div>
+
                 <div className="border-t border-slate-200 px-4 py-3 text-[10px] text-slate-500">
                   La columna # es el ranking definitivo de esta etapa (orden calculado en servidor). La entrada son las
                   filas de su vista en Filtrado por puntaje total, cruzadas con Firestore por RUT. El recuadro de empates
                   indica si aún hay grupos indistinguibles según el criterio aplicado. Las filas destacadas en verde
-                  corresponden al Top 150.
+                  corresponden al Top 150. La tabla muestra {ITEMS_POR_PAGINA_DESEMPATE} postulantes por página.
                 </div>
               </>
             )}
