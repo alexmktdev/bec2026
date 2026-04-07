@@ -2,11 +2,35 @@ import type { ExcelRevisionRow } from '../services/excelRevisionImport'
 import type { PostulanteFirestore } from '../types/postulante'
 import { normalizeRut } from '../postulacion/shared/rut'
 
+/** Quita BOM, espacios raros y normaliza mayúsculas para comparar encabezados de Excel. */
+function normEncabezado(h: string): string {
+  return h
+    .replace(/^\ufeff/g, '')
+    .trim()
+    .toLowerCase()
+    .replace(/\s+/g, ' ')
+}
+
 /** Encuentra el nombre exacto de columna en el Excel (comparación sin sensibilidad a mayúsculas). */
 export function findColumnKeyIgnoreCase(headers: string[], target: string): string | null {
-  const t = target.trim().toLowerCase()
+  const t = normEncabezado(target)
   for (const h of headers) {
-    if (h.trim().toLowerCase() === t) return h
+    if (normEncabezado(h) === t) return h
+  }
+  return null
+}
+
+/**
+ * Localiza la columna RUT aunque venga como "RUT", " Rut ", con BOM, o "RUT (1)" por duplicados en Excel.
+ */
+export function findRutColumnKey(headers: string[]): string | null {
+  for (const h of headers) {
+    const n = normEncabezado(h)
+    if (n === 'rut') return h
+  }
+  for (const h of headers) {
+    const n = normEncabezado(h)
+    if (/^rut([\s(]|$)/.test(n)) return h
   }
   return null
 }

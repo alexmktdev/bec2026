@@ -11,7 +11,7 @@ import { descargarTodosDocumentos } from '../../services/zipDownload'
 import { useAuth } from '../../hooks/useAuth'
 import { ZipDownloadBriefNotice } from './ZipDownloadBriefNotice'
 import { ExcelRevisionUploadedTable } from './FiltroRevisionDoc/ExcelRevisionUploadedTable'
-import { findColumnKeyIgnoreCase, ordenarFilasExcelSegunPostulantes } from '../../utils/excelRevisionRowMatch'
+import { findRutColumnKey, ordenarFilasExcelSegunPostulantes } from '../../utils/excelRevisionRowMatch'
 import { normalizeRut } from '../../postulacion/shared/rut'
 
 function puntajeLabel(p: number) {
@@ -87,7 +87,7 @@ export function FiltroPuntajeTotal() {
   }, [recargandoExcel])
 
   const claveRutExcel = useMemo(
-    () => (excelRevision ? findColumnKeyIgnoreCase(excelRevision.headers, 'RUT') : null),
+    () => (excelRevision ? findRutColumnKey(excelRevision.headers) : null),
     [excelRevision],
   )
 
@@ -345,7 +345,7 @@ export function FiltroPuntajeTotal() {
             </div>
           </div>
 
-          {/* Tabla (mismo Excel que en Revisión de documentación, filtrado por esta etapa) */}
+          {/* Tabla Excel: no depende del loading de postulantes (antes el spinner tapaba todo el bloque). */}
           <div className="space-y-4">
             {errorPostulantes ? (
               <div className="rounded-xl border border-red-200 bg-red-50 p-5 flex items-start gap-3">
@@ -363,69 +363,98 @@ export function FiltroPuntajeTotal() {
                   Reintentar
                 </button>
               </div>
-            ) : loading ? (
-              <div className="flex items-center justify-center py-20">
-                <div className="h-10 w-10 animate-spin rounded-full border-4 border-blue-200 border-t-blue-700" />
-              </div>
-            ) : errorExcel ? (
-              <div className="rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-800" role="alert">
-                {errorExcel}
-              </div>
-            ) : restaurandoExcel ? (
-              <div className="flex items-center justify-center gap-2 py-12 text-sm text-slate-500">
-                <span className="h-4 w-4 animate-spin rounded-full border-2 border-blue-200 border-t-blue-700" />
-                Cargando tabla del Excel revisado…
-              </div>
-            ) : !excelRevision ? (
-              <div className="rounded-xl border border-amber-200 bg-amber-50/90 p-6 text-sm text-amber-950 space-y-3">
-                <p className="font-semibold text-amber-900">Aún no hay un Excel revisado cargado</p>
-                <p className="text-amber-900/90 leading-relaxed">
-                  Esta pestaña muestra la misma planilla que sube en <strong>Revisión de documentación</strong>, pero solo las
-                  filas que corresponden a postulantes con documentación validada y al filtro de puntaje vigente (orden por
-                  puntaje total de mayor a menor). Suba primero el archivo .xlsx en esa pestaña.
-                </p>
-                <Link
-                  to="/admin/filtro-revision-doc"
-                  className="inline-flex items-center gap-2 rounded-lg bg-blue-800 px-4 py-2 text-sm font-semibold text-white shadow-sm hover:bg-blue-900"
-                >
-                  Ir a Revisión de documentación — Subir Excel revisado
-                </Link>
-              </div>
-            ) : !claveRutExcel ? (
-              <div className="rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-800">
-                El archivo guardado no tiene una columna <strong>RUT</strong> reconocible; no se puede alinear con el listado
-                del sistema. Vuelva a exportar desde el panel y suba el Excel en revisión de documentación.
-              </div>
             ) : (
-              <ExcelRevisionUploadedTable
-                data={excelRevision}
-                onClear={() => {}}
-                rowsSubset={filasExcelFiltradas}
-                hideQuitarArchivo
-                hidePersistenciaBanner
-                onRowActivate={activarFilaExcel}
-                subtituloFiltro={
-                  <p>
-                    Mismas columnas y estilo que en <strong>Revisión de documentación</strong>. Solo aparecen RUT que existen
-                    en el archivo y en esta etapa
-                    {puntajeAplicado != null ? (
-                      <>
-                        {' '}
-                        con puntaje total <strong>≥ {puntajeAplicado}</strong>
-                      </>
-                    ) : (
-                      <> (todas las filas con documentación validada)</>
-                    )}
-                    . Clic en una fila abre la ficha si el postulante está en el sistema. Exportar Excel / ZIP de arriba
-                    sigue usando los datos del servidor ({tablaLista.length} postulantes en esta vista).
-                  </p>
-                }
-                mensajeVacioSinBusqueda={
-                  tablaLista.length === 0
-                    ? 'No hay postulantes con documentación validada en esta etapa, o el umbral de puntaje dejó la lista vacía.'
-                    : 'Ningún RUT del Excel coincide con el listado filtrado. Compruebe que el archivo corresponde al mismo proceso y que los RUT coinciden con el panel.'
-                }
-              />
+              <>
+                {loading ? (
+                  <div className="flex items-center gap-2 rounded-lg border border-blue-200 bg-blue-50/90 px-3 py-2 text-xs text-blue-900">
+                    <span className="h-3.5 w-3.5 shrink-0 animate-spin rounded-full border-2 border-blue-300 border-t-blue-700" />
+                    <span>
+                      Actualizando postulantes desde el servidor… La planilla del Excel se muestra igualmente abajo; hasta
+                      que termine la carga se ve el archivo completo y después se aplica el filtro de esta etapa (documentación
+                      validada y umbral de puntaje si está activo).
+                    </span>
+                  </div>
+                ) : null}
+
+                {errorExcel ? (
+                  <div className="rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-800" role="alert">
+                    {errorExcel}
+                  </div>
+                ) : restaurandoExcel ? (
+                  <div className="flex items-center justify-center gap-2 py-12 text-sm text-slate-500">
+                    <span className="h-4 w-4 animate-spin rounded-full border-2 border-blue-200 border-t-blue-700" />
+                    Cargando tabla del Excel revisado…
+                  </div>
+                ) : !excelRevision ? (
+                  <div className="rounded-xl border border-amber-200 bg-amber-50/90 p-6 text-sm text-amber-950 space-y-3">
+                    <p className="font-semibold text-amber-900">Aún no hay un Excel revisado cargado</p>
+                    <p className="text-amber-900/90 leading-relaxed">
+                      Esta pestaña muestra la misma planilla que sube en <strong>Revisión de documentación</strong>, pero solo las
+                      filas que corresponden a postulantes con documentación validada y al filtro de puntaje vigente (orden por
+                      puntaje total de mayor a menor). Suba primero el archivo .xlsx en esa pestaña con el mismo usuario con el
+                      que está conectado ahora, o pulse <strong>Recargar Excel</strong> si ya lo subió.
+                    </p>
+                    <Link
+                      to="/admin/filtro-revision-doc"
+                      className="inline-flex items-center gap-2 rounded-lg bg-blue-800 px-4 py-2 text-sm font-semibold text-white shadow-sm hover:bg-blue-900"
+                    >
+                      Ir a Revisión de documentación — Subir Excel revisado
+                    </Link>
+                  </div>
+                ) : !claveRutExcel ? (
+                  <div className="rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-800">
+                    El archivo guardado no tiene una columna <strong>RUT</strong> reconocible; no se puede alinear con el listado
+                    del sistema. Vuelva a exportar desde el panel y suba el Excel en revisión de documentación.
+                  </div>
+                ) : (
+                  <ExcelRevisionUploadedTable
+                    data={excelRevision}
+                    onClear={() => {}}
+                    rowsSubset={loading ? undefined : filasExcelFiltradas}
+                    hideQuitarArchivo
+                    hidePersistenciaBanner
+                    onRowActivate={loading ? undefined : activarFilaExcel}
+                    subtituloFiltro={
+                      <div className="space-y-2">
+                        {loading ? (
+                          <p className="text-amber-800 font-medium">
+                            Vista temporal: <strong>todas las filas</strong> del archivo hasta que termine de cargar el listado
+                            de postulantes; luego solo las de esta etapa.
+                          </p>
+                        ) : null}
+                        <p>
+                          Mismas columnas y estilo que en <strong>Revisión de documentación</strong>.
+                          {!loading ? (
+                            <>
+                              {' '}
+                              Solo aparecen RUT que existen en el archivo y en esta etapa
+                              {puntajeAplicado != null ? (
+                                <>
+                                  {' '}
+                                  con puntaje total <strong>≥ {puntajeAplicado}</strong>
+                                </>
+                              ) : (
+                                <> (todas las filas con documentación validada)</>
+                              )}
+                              .
+                            </>
+                          ) : null}{' '}
+                          Clic en una fila abre la ficha si el postulante ya está cargado. Exportar Excel / ZIP de arriba sigue
+                          usando los datos del servidor ({loading ? '…' : tablaLista.length} postulantes en esta vista
+                          {loading ? ', cargando' : ''}).
+                        </p>
+                      </div>
+                    }
+                    mensajeVacioSinBusqueda={
+                      loading
+                        ? 'Esperando datos de postulantes para alinear filas por RUT…'
+                        : tablaLista.length === 0
+                          ? 'No hay postulantes con documentación validada en esta etapa, o el umbral de puntaje dejó la lista vacía.'
+                          : 'Ningún RUT del Excel coincide con el listado filtrado. Compruebe que el archivo corresponde al mismo proceso y que los RUT coinciden con el panel.'
+                    }
+                  />
+                )}
+              </>
             )}
           </div>
         </div>
