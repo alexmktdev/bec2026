@@ -31,6 +31,11 @@ interface Props {
   onRowActivate?: (row: ExcelRevisionRow) => void
   /** Mensaje cuando no hay filas base y la búsqueda está vacía (p. ej. subconjunto filtrado vacío). */
   mensajeVacioSinBusqueda?: string
+  /**
+   * Si se indica (p. ej. 150), la celda # usa tono verde suave cuando la fila está entre las primeras `hasta`
+   * posiciones del orden en `sourceRows` (ranking global, no solo la página o el filtro de búsqueda).
+   */
+  marcarVerdeRankingHasta?: number
 }
 
 function valorCeldaMostrar(header: string, raw: string): string {
@@ -48,6 +53,7 @@ export function ExcelRevisionUploadedTable({
   hidePersistenciaBanner = false,
   onRowActivate,
   mensajeVacioSinBusqueda,
+  marcarVerdeRankingHasta,
 }: Props) {
   const { headers, rows, sheetName, coincideConPlantillaExport, persistedAt } = data
   const [busqueda, setBusqueda] = useState('')
@@ -167,14 +173,33 @@ export function ExcelRevisionUploadedTable({
               ) : (
                 paginaItems.map((row, idx) => {
                   const n = startIndex + idx + 1
+                  const posicionRankingGlobal =
+                    marcarVerdeRankingHasta != null && marcarVerdeRankingHasta > 0
+                      ? sourceRows.indexOf(row) + 1
+                      : 0
+                  const resaltarNumeroVerde =
+                    marcarVerdeRankingHasta != null &&
+                    marcarVerdeRankingHasta > 0 &&
+                    posicionRankingGlobal >= 1 &&
+                    posicionRankingGlobal <= marcarVerdeRankingHasta
+                  const numeroMostrar =
+                    marcarVerdeRankingHasta != null && marcarVerdeRankingHasta > 0 && posicionRankingGlobal > 0
+                      ? posicionRankingGlobal
+                      : n
                   return (
                     <tr
                       key={`excel-revision-row-${startIndex}-${idx}`}
                       className={`divide-x divide-slate-50 hover:bg-slate-50/90 transition-colors ${onRowActivate ? 'cursor-pointer' : ''}`}
                       onClick={onRowActivate ? () => onRowActivate(row) : undefined}
                     >
-                      <td className="sticky left-0 z-10 bg-slate-50/95 px-2 py-1.5 text-center text-xs font-bold text-slate-600 tabular-nums shadow-[1px_0_0_0_rgba(241,245,249,1)] border-b border-slate-100">
-                        {n}
+                      <td
+                        className={`sticky left-0 z-10 px-2 py-1.5 text-center text-xs font-bold tabular-nums shadow-[1px_0_0_0_rgba(241,245,249,1)] border-b border-slate-100 ${
+                          resaltarNumeroVerde
+                            ? 'bg-emerald-100/85 text-emerald-900'
+                            : 'bg-slate-50/95 text-slate-600'
+                        }`}
+                      >
+                        {numeroMostrar}
                       </td>
                       {headers.map((h) => {
                         const raw = row[h] ?? ''

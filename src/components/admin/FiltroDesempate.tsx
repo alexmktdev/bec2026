@@ -1,10 +1,9 @@
 import { useEffect, useState } from 'react'
 import { useAdminFilter } from '../../contexts/AdminFilterContext'
 import { AdminLayout } from './AdminLayout'
-import { exportarExcel } from '../../services/excelExport'
 import { descargarTodosDocumentos } from '../../services/zipDownload'
 import type { PostulanteFirestore } from '../../types/postulante'
-import type { ExcelRevisionParseResult } from '../../services/excelRevisionImport'
+import { exportarExcelRevisionTabla, type ExcelRevisionParseResult } from '../../services/excelRevisionImport'
 import { ZipDownloadBriefNotice } from './ZipDownloadBriefNotice'
 import { ExcelRevisionUploadedTable } from './FiltroRevisionDoc/ExcelRevisionUploadedTable'
 import {
@@ -18,6 +17,8 @@ import {
   clearCriterioDesempateConfig,
   type CriterioDesempate,
 } from '../../services/filtroConfigService'
+
+const TOP_RANK_VERDE = 150
 
 const CRITERIOS_ACUMULABLES: { value: CriterioDesempate | 'none'; label: string }[] = [
   { value: 'none', label: 'Sin filtro activo (solo puntaje total)' },
@@ -115,9 +116,13 @@ export function FiltroDesempate() {
   }, [])
 
   async function handleExportExcel() {
+    if (!tablaExcelDesempate?.rows.length) return
     setExportando('excel')
     try {
-      await exportarExcel(listaOrdenada.slice(0, 150))
+      await exportarExcelRevisionTabla(tablaExcelDesempate, {
+        nombreArchivoBase: 'filtro_desempate_ranking',
+        nombreHoja: 'Ranking desempate',
+      })
     } catch (err) {
       console.error('Error exportando Excel:', err)
       alert('Error al exportar Excel.')
@@ -357,9 +362,9 @@ export function FiltroDesempate() {
               <span className="rounded-full border border-slate-200 bg-white px-3 py-1 text-xs font-semibold text-slate-700 shadow-sm">
                 {listaOrdenada.length} postulante{listaOrdenada.length !== 1 ? 's' : ''} en la lista de desempate
               </span>
-              {listaOrdenada.length > 0 && (
-                <span className="rounded-full border border-blue-200 bg-blue-50 px-3 py-1 text-xs font-semibold text-blue-700">
-                  Exportación Excel: Top 150
+              {tablaExcelDesempate && tablaExcelDesempate.rows.length > 0 && (
+                <span className="rounded-full border border-emerald-200 bg-emerald-50 px-3 py-1 text-xs font-semibold text-emerald-800">
+                  Excel: tabla en pantalla (orden de ranking actual)
                 </span>
               )}
             </div>
@@ -375,8 +380,10 @@ export function FiltroDesempate() {
                 Actualizar
               </button>
               <button
-                onClick={handleExportExcel}
-                disabled={exportando === 'excel' || listaOrdenada.length === 0}
+                onClick={() => { void handleExportExcel() }}
+                disabled={
+                  exportando === 'excel' || !tablaExcelDesempate || tablaExcelDesempate.rows.length === 0
+                }
                 className="flex items-center gap-1.5 rounded-lg bg-green-700 px-3 py-2 text-xs font-semibold text-white shadow-sm hover:bg-green-800 disabled:opacity-50"
               >
                 {exportando === 'excel' ? 'Exportando...' : 'Exportar Excel'}
@@ -433,17 +440,20 @@ export function FiltroDesempate() {
                   onClear={() => {}}
                   hideQuitarArchivo
                   hidePersistenciaBanner
+                  marcarVerdeRankingHasta={TOP_RANK_VERDE}
                   subtituloFiltro={
                     <p>
                       Misma vista que en <strong>Filtrado por puntaje total</strong> (columnas y valores del Excel
                       guardado). El orden de las filas es el <strong>ranking de desempate</strong> del servidor. La
-                      búsqueda y la paginación (10 filas por página) son solo en el navegador.
+                      columna <strong>#</strong> usa fondo verde suave en las primeras {TOP_RANK_VERDE} posiciones del
+                      ranking. La búsqueda y la paginación (10 filas por página) son solo en el navegador.
                     </p>
                   }
                 />
                 <p className="text-[10px] text-slate-500 px-1 leading-relaxed">
-                  El recuadro de empates (arriba) resume coincidencias según el criterio aplicado. Exportar Excel y ZIP
-                  siguen usando los datos de postulantes en Firestore (hasta top 150 en Excel), no esta vista previa.
+                  <strong>Exportar Excel</strong> descarga exactamente esta tabla (mismas columnas y orden actual). El{' '}
+                  <strong>ZIP</strong> de documentación sigue usando los postulantes en Firestore según la lista
+                  cargada.
                 </p>
               </div>
             )}

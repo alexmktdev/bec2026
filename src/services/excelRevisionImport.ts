@@ -1,4 +1,5 @@
 import ExcelJS from 'exceljs'
+import { saveAs } from 'file-saver'
 import { getExcelExportHeaderLabels } from './excelExport'
 
 const MAX_FILE_BYTES = 32 * 1024 * 1024
@@ -140,4 +141,29 @@ export async function importarExcelRevisionDesdeArchivo(file: File): Promise<Exc
     sheetName: sheet.name,
     coincideConPlantillaExport: encabezadosCoincidenConExportOficial(headers),
   }
+}
+
+/** Genera un .xlsx en el navegador a partir de la misma estructura que la vista previa de revisión / desempate. */
+export async function exportarExcelRevisionTabla(
+  data: ExcelRevisionParseResult,
+  options?: { nombreArchivoBase?: string; nombreHoja?: string },
+): Promise<void> {
+  if (!data.headers.length || !data.rows.length) {
+    throw new Error('No hay datos para exportar.')
+  }
+  const wb = new ExcelJS.Workbook()
+  const hoja = (options?.nombreHoja ?? 'Ranking desempate').slice(0, 31)
+  const ws = wb.addWorksheet(hoja, { views: [{ state: 'frozen', ySplit: 1 }] })
+  ws.addRow(data.headers)
+  ws.getRow(1).font = { bold: true }
+  for (const row of data.rows) {
+    ws.addRow(data.headers.map((h) => row[h] ?? ''))
+  }
+  const buf = await wb.xlsx.writeBuffer()
+  const base = options?.nombreArchivoBase ?? 'filtro_desempate_ranking'
+  const filename = `${base}_${new Date().toISOString().slice(0, 10)}.xlsx`
+  saveAs(
+    new Blob([buf], { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' }),
+    filename,
+  )
 }
