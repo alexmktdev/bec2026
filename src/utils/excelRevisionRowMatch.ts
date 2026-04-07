@@ -39,17 +39,32 @@ export function findRutColumnKey(headers: string[]): string | null {
   return null
 }
 
-/** Acepta «Validado» o «Validada» en el Excel (mayúsculas, espacios, sin tildes inconsistentes). */
+/**
+ * Celda de revisión «validada»: texto manual Validado/Validada o el rotulo del export del panel (DOC. VALIDADA).
+ */
 export function esCeldaEstadoValidado(raw: string): boolean {
   const t = raw
     .trim()
     .toLowerCase()
     .normalize('NFD')
     .replace(/\p{M}/gu, '')
-  return t === 'validado' || t === 'validada'
+    .replace(/\./g, ' ')
+    .replace(/\s+/g, ' ')
+    .trim()
+  if (t === 'validado' || t === 'validada') return true
+  if (t === 'doc validada' || t === 'doc validado') return true
+  if (t === 'documentacion validada') return true
+  return false
+}
+
+/** «Estado Civil» no es el estado de revisión documental (evita elegir la primera columna equivocada). */
+function encabezadoEsEstadoCivil(h: string): boolean {
+  const n = normEncabezado(h)
+  return n === 'estado civil' || n.startsWith('estado civil ') || /^estado civil\s*\(/.test(n)
 }
 
 function encabezadoPareceEstado(h: string): boolean {
+  if (encabezadoEsEstadoCivil(h)) return false
   const n = normEncabezado(h)
   if (n === 'estado') return true
   if (/^estado([\s(]|$)/.test(n)) return true
