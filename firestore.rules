@@ -45,12 +45,6 @@ service cloud.firestore {
       allow write: if isSuperadmin();
     }
 
-    // Filtro de puntaje: lectura para el panel; escritura solo vía Cloud Function (Admin SDK).
-    match /config/filtro_puntaje {
-      allow read: if isRevisorOrAdmin();
-      allow write: if false;
-    }
-
     // Config del filtro de revisión de documentación
     match /config/filtro_revision_doc {
       allow read, write: if isRevisorOrAdmin();

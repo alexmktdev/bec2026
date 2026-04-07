@@ -63,7 +63,6 @@ function descripcionClaveEmpate(criterio: CriterioDesempate | 'none'): string {
 export function FiltroDesempate() {
   const { refrescarPostulantes } = useAdminFilter()
   const [listaOrdenada, setListaOrdenada] = useState<PostulanteFirestore[]>([])
-  const [puntajeAplicado, setPuntajeAplicado] = useState<number | null>(null)
   const [loading, setLoading] = useState(true)
   const [errorPostulantes, setErrorPostulantes] = useState<string | null>(null)
   const [criterioSeleccionado, setCriterioSeleccionado] = useState<CriterioDesempate | 'none'>('none')
@@ -81,7 +80,6 @@ export function FiltroDesempate() {
       // si Firestore del navegador tiene problemas de red (p. ej. QUIC).
       void refrescarPostulantes()
       const data = await obtenerRankingDesempate(criterio)
-      setPuntajeAplicado(data.puntajeAplicado)
       setListaOrdenada(data.postulantes)
       setEmpatesResumen(data.empatesResumen ?? EMPATES_VACIO)
       setCriterioSeleccionado(normalizarCriterioUI(data.criterioHasta))
@@ -178,22 +176,13 @@ export function FiltroDesempate() {
             <div>
               <h3 className="text-sm font-bold text-blue-900 uppercase tracking-tight">FILTRADO POR DESEMPATE</h3>
               <p className="mt-1 text-xs text-blue-800 leading-relaxed">
-                Entran aquí <strong>todos</strong> los postulantes que cumplieron <strong>documentación validada</strong> y el{' '}
-                <strong>filtro por puntaje total</strong> vigente en el servidor — <strong>sin tope de cantidad</strong>{' '}
-                (pueden ser 200, 300, 400 o los que correspondan). La tabla muestra el <strong>ranking oficial</strong> calculado
-                en backend con filtros acumulables por etapas:
+                Entran aquí <strong>todos</strong> los postulantes con <strong>documentación validada</strong> o estado{' '}
+                <strong>aprobado</strong> — <strong>sin tope de cantidad</strong>. La tabla muestra el{' '}
+                <strong>ranking oficial</strong> calculado en backend con criterios acumulables:
                 <strong> puntaje total ↓ → puntaje NEM ↓ → puntaje RSH ↓ → puntaje enfermedad ↓ → puntaje hermanos/hijos ↓ → fecha/hora ↓</strong>.
               </p>
             </div>
           </div>
-
-          {puntajeAplicado == null && (
-            <div className="rounded-xl border border-amber-300 bg-amber-50 p-4 text-sm text-amber-900">
-              <strong>Sin filtro de puntaje aplicado.</strong> Primero debe completarse la revisión de documentos y luego
-              aplicar el umbral en <strong>Filtrar por puntaje total</strong>. Hasta entonces esta vista no muestra candidatos
-              para desempate.
-            </div>
-          )}
 
           {/* Resumen Total */}
           <div className="flex items-center gap-4 rounded-xl border border-blue-200 bg-gradient-to-r from-blue-50 to-white p-4 shadow-sm">
@@ -207,14 +196,14 @@ export function FiltroDesempate() {
               <p className="text-2xl font-black text-blue-800 tracking-tight leading-none mt-1">
                 {listaOrdenada.length}{' '}
                 <span className="text-base font-semibold text-blue-600 tracking-normal">
-                  postulantes (tras revisión doc. y puntaje)
+                  postulantes (documentación validada / aprobados)
                 </span>
               </p>
             </div>
           </div>
 
           {/* Empates restantes (clave según criterio acumulado; backend) */}
-          {puntajeAplicado != null && listaOrdenada.length > 0 && (
+          {listaOrdenada.length > 0 && (
             <div
               className={`rounded-xl border p-4 shadow-sm ${
                 empatesResumen.gruposConEmpate > 0
@@ -249,7 +238,7 @@ export function FiltroDesempate() {
                   </p>
                   <p className="mt-1 text-xs text-slate-600">
                     {criterioSeleccionado === 'none'
-                      ? 'El orden por puntaje total se alinea con la pestaña Filtrado por puntaje total.'
+                      ? 'Solo se ordena por puntaje total (descendente).'
                       : 'Cada vez que subes un nivel en el menú, se excluyen de “empate” quienes ya se diferenciaron por NEM, RSH, etc.'}
                   </p>
                   {empatesResumen.gruposConEmpate > 0 && (
@@ -386,7 +375,7 @@ export function FiltroDesempate() {
                 </svg>
                 <p className="text-slate-600 font-medium">No hay postulantes en esta etapa.</p>
                 <p className="mt-1 text-sm text-slate-400">
-                  Debe existir filtro de puntaje aplicado y postulantes con documentación validada que superen ese umbral.
+                  Aún no hay postulantes con documentación validada o aprobados en el sistema.
                 </p>
               </div>
             ) : (

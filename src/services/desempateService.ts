@@ -18,7 +18,6 @@ export type EmpatesResumenDesempate = {
 
 type RankingDesempateResponse = {
   postulantes: PostulanteFirestore[]
-  puntajeAplicado: number | null
   criterioHasta: CriterioDesempate | null
   empatesResumen: EmpatesResumenDesempate
 }
@@ -38,7 +37,6 @@ export async function obtenerRankingDesempate(
     detalleGrupos: [],
   }
   return {
-    puntajeAplicado: data.puntajeAplicado ?? null,
     criterioHasta: data.criterioHasta,
     empatesResumen,
     postulantes: (data.postulantes || []).map((p) => ({

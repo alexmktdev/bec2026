@@ -25,7 +25,6 @@ const PostulacionYaRealizada = lazy(() => import('./components/PostulacionYaReal
 // Lazy Loading de rutas de Admin (pesadas)
 const Login = lazy(() => import('./components/admin/Login').then(module => ({ default: module.Login })))
 const Dashboard = lazy(() => import('./components/admin/Dashboard').then(module => ({ default: module.Dashboard })))
-const FiltroPuntajeTotal = lazy(() => import('./components/admin/FiltroPuntajeTotal').then(module => ({ default: module.FiltroPuntajeTotal })))
 const FiltroInicial = lazy(() => import('./components/admin/FiltroInicial').then(module => ({ default: module.FiltroInicial })))
 const FiltroRevisionDoc = lazy(() => import('./components/admin/FiltroRevisionDoc').then(module => ({ default: module.FiltroRevisionDoc })))
 const FiltroDesempate = lazy(() => import('./components/admin/FiltroDesempate').then(module => ({ default: module.FiltroDesempate })))
@@ -129,7 +128,6 @@ function App() {
             }
           >
             <Route index element={<Dashboard />} />
-            <Route path="filtro-puntaje-total" element={<FiltroPuntajeTotal />} />
             <Route path="filtro-inicial" element={<FiltroInicial />} />
             <Route path="filtro-revision-doc" element={<FiltroRevisionDoc />} />
             <Route path="filtro-desempate" element={<FiltroDesempate />} />

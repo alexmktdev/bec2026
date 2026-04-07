@@ -764,9 +764,6 @@ export const obtenerPostulantesRevisor = onCall(
   }
 )
 
-/** Umbrales permitidos para el filtro de puntaje (misma grilla que el panel). */
-const UMBRALES_PUNTAJE_ADMIN = new Set([30, 40, 50, 60, 70, 80])
-
 type NivelDesempate = 'nem' | 'rsh' | 'enfermedad' | 'hermanos' | 'fecha'
 const NIVELES_DESEMPATE: NivelDesempate[] = ['nem', 'rsh', 'enfermedad', 'hermanos', 'fecha']
 
@@ -883,80 +880,8 @@ function serializarParaCallable(data: unknown): unknown {
 }
 
 /**
- * Aplica el filtro por puntaje total solo sobre postulantes con documentación validada.
- * Persiste `config/filtro_puntaje`. Solo superadmin (el cliente ya no escribe ese doc).
- */
-export const aplicarFiltroPuntajeAdmin = onCall(
-  { ...webCallableBase(), memory: '256MiB', timeoutSeconds: 60, maxInstances: 5 },
-  async (request) => {
-    const callerUid = request.auth?.uid
-    if (!callerUid) throw new HttpsError('unauthenticated', 'Debe iniciar sesión.')
-
-    const db = admin.firestore()
-    await verifySuperAdmin(callerUid, db)
-
-    const raw = (request.data as { puntajeMinimo?: unknown })?.puntajeMinimo
-    const puntajeMinimo =
-      typeof raw === 'number' && Number.isFinite(raw)
-        ? raw
-        : typeof raw === 'string'
-          ? parseInt(raw, 10)
-          : NaN
-
-    if (!Number.isFinite(puntajeMinimo) || !UMBRALES_PUNTAJE_ADMIN.has(puntajeMinimo)) {
-      throw new HttpsError('invalid-argument', 'Umbral de puntaje no permitido.')
-    }
-
-    try {
-      const snapshot = await db.collection('postulantes').get()
-      const sortedDocs = ordenarDocsPostulantesComoEnPanel(snapshot.docs)
-
-      let cantidad = 0
-      for (const docSnap of sortedDocs) {
-        const data = docSnap.data()
-        if (data.estado !== 'documentacion_validada') continue
-        const puntaje = calcularPuntajeTotal(data as PostulanteData)
-        if (puntaje.total >= puntajeMinimo) cantidad++
-      }
-
-      await db.collection('config').doc('filtro_puntaje').set({
-        puntajeAplicado: puntajeMinimo,
-        updatedAt: new Date().toISOString(),
-      })
-
-      return { ok: true as const, puntajeAplicado: puntajeMinimo, cantidadSeleccionados: cantidad }
-    } catch (e: unknown) {
-      console.error('Error aplicarFiltroPuntajeAdmin:', e)
-      if (e instanceof HttpsError) throw e
-      throw new HttpsError('internal', 'No se pudo aplicar el filtro de puntaje.')
-    }
-  },
-)
-
-export const limpiarFiltroPuntajeAdmin = onCall(
-  { ...webCallableBase(), memory: '256MiB', timeoutSeconds: 15, maxInstances: 5 },
-  async (request) => {
-    const callerUid = request.auth?.uid
-    if (!callerUid) throw new HttpsError('unauthenticated', 'Debe iniciar sesión.')
-
-    const db = admin.firestore()
-    await verifySuperAdmin(callerUid, db)
-
-    try {
-      const ref = db.collection('config').doc('filtro_puntaje')
-      const snap = await ref.get()
-      if (snap.exists) await ref.delete()
-      return { ok: true as const }
-    } catch (e: unknown) {
-      console.error('Error limpiarFiltroPuntajeAdmin:', e)
-      throw new HttpsError('internal', 'No se pudo limpiar el filtro de puntaje.')
-    }
-  },
-)
-
-/**
- * Ranking de desempate calculado en backend (sin depender de filtros locales en frontend).
- * Base siempre activa: Puntaje total (desc).
+ * Ranking de desempate calculado en backend.
+ * Base: postulantes con documentación validada o aprobados; orden Puntaje total (desc).
  * Nivel seleccionable acumulable:
  * - nem: + Puntaje NEM (desc)
  * - rsh: + Puntaje NEM (desc) + Puntaje RSH (desc)
@@ -979,35 +904,13 @@ export const obtenerRankingDesempateAdmin = onCall(
         ? (String(criterioHastaRaw) as NivelDesempate)
         : null
 
-      const filtroSnap = await db.collection('config').doc('filtro_puntaje').get()
-      const puntajeAplicadoRaw = filtroSnap.data()?.puntajeAplicado
-      const puntajeAplicado =
-        typeof puntajeAplicadoRaw === 'number' && Number.isFinite(puntajeAplicadoRaw)
-          ? puntajeAplicadoRaw
-          : null
-
-      if (puntajeAplicado == null) {
-        return {
-          postulantes: [],
-          puntajeAplicado: null,
-          criterioHasta,
-          empatesResumen: {
-            gruposConEmpate: 0,
-            postulantesEnEmpate: 0,
-            detalleGrupos: [],
-          },
-        }
-      }
-
       const snapshot = await db.collection('postulantes').get()
       const sortedDocs = ordenarDocsPostulantesComoEnPanel(snapshot.docs)
       const postulantesBase = sortedDocs.map((d) => ({ id: d.id, ...d.data() as Record<string, unknown> }))
 
       const elegibles = postulantesBase.filter((p) => {
         const estado = String(p.estado ?? '')
-        if (estado !== 'documentacion_validada' && estado !== 'aprobado') return false
-        const puntaje = calcularPuntajeTotal(p as unknown as PostulanteData)
-        return (puntaje.total ?? 0) >= puntajeAplicado
+        return estado === 'documentacion_validada' || estado === 'aprobado'
       })
 
       const ranking = [...elegibles].sort((a, b) => {
@@ -1054,7 +957,7 @@ export const obtenerRankingDesempateAdmin = onCall(
 
       const postulantesJson = ranking.map((p) => serializarParaCallable(p) as Record<string, unknown>)
 
-      return { postulantes: postulantesJson, puntajeAplicado, criterioHasta, empatesResumen }
+      return { postulantes: postulantesJson, criterioHasta, empatesResumen }
     } catch (e: unknown) {
       console.error('Error obtenerRankingDesempateAdmin:', e)
       if (e instanceof HttpsError) throw e
