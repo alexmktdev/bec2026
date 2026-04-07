@@ -63,7 +63,7 @@ async function construirVista(db: admin.firestore.Firestore, uid: string): Promi
     return v
   }
 
-  const estadoKey = findEstadoRevisionColumnKey(pack.headers)
+  const estadoKey = findEstadoRevisionColumnKey(pack.headers, pack.rows)
   const puntajeKey = findPuntajeTotalColumnKey(pack.headers)
   const sinColumnaEstado = estadoKey == null
   const sinColumnaPuntajeTotal = puntajeKey == null
