@@ -111,6 +111,11 @@ const COLUMNAS_MANUAL_FINAL = [
   { header: 'Descarga documentación', width: 28 },
 ] as const
 
+/** Encabezados de la fila 1 del Excel que genera `exportarExcel` (importación / validación en revisión). */
+export function getExcelExportHeaderLabels(): string[] {
+  return [...COLUMNS.map((c) => c.header), ...COLUMNAS_MANUAL_FINAL.map((c) => c.header)]
+}
+
 /** Texto visible del hipervínculo (la URL va en el destino del clic, no en la celda). */
 const TEXTO_CELDA_LINK_ZIP = 'Descargar documentación (ZIP)'
 
@@ -135,7 +140,7 @@ export async function exportarExcel(postulantes: PostulanteFirestore[]) {
   const workbook = new ExcelJS.Workbook()
   const sheet = workbook.addWorksheet('Postulantes')
 
-  const headers = [...COLUMNS.map((c) => c.header), ...COLUMNAS_MANUAL_FINAL.map((c) => c.header)]
+  const headers = getExcelExportHeaderLabels()
   const headerRow = sheet.addRow(headers)
   headerRow.font = { bold: true }
   COLUMNS.forEach((col, i) => {
