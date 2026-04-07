@@ -148,28 +148,47 @@ export function FiltroPuntajeTotal() {
     [postulantes],
   )
 
-  /** Siempre orden mayor → menor puntaje total (misma nómina que viene de revisión de documentos). */
+  /**
+   * Orden para alinear el Excel con el servidor por RUT: todos los postulantes cargados, por puntaje.
+   * - No depende del umbral (`postulantesFiltrados`).
+   * - No se limita a `documentacion_validada`: el Excel puede traer «DOC. VALIDADA» de un export aunque en Firestore el
+   *   estado aún sea otro; igual se cruza RUT y se ordena por puntaje.
+   */
+  const postulantesOrdenVistaExcel = useMemo(
+    () => ordenarPorPuntajeTotalDesc(postulantes),
+    [postulantes],
+  )
+
+  /** Listado de la pestaña para export/ZIP y totales sin Excel: respeta umbral si está activo. */
   const tablaLista = useMemo(() => {
     const base =
       puntajeAplicado == null ? postulantesElegiblesPuntaje : postulantesFiltrados
     return ordenarPorPuntajeTotalDesc(base)
   }, [puntajeAplicado, postulantesElegiblesPuntaje, postulantesFiltrados])
 
-  /** Filas Validado del Excel; orden por RUT respecto al servidor si hay coincidencias, si no, orden del archivo. */
+  /** Filas Validado del Excel; orden por RUT según puntaje de la lista completa de postulantes (no según el umbral). */
   const filasExcelParaMostrar = useMemo(() => {
     if (!excelRevision) return []
     if (!claveRutExcel) return filasExcelSoloEstadoValidado
-    const ordenadas = ordenarFilasExcelSegunPostulantes(filasExcelSoloEstadoValidado, claveRutExcel, tablaLista)
+    const ordenadas = ordenarFilasExcelSegunPostulantes(
+      filasExcelSoloEstadoValidado,
+      claveRutExcel,
+      postulantesOrdenVistaExcel,
+    )
     if (ordenadas.length > 0) return ordenadas
     if (filasExcelSoloEstadoValidado.length > 0) return filasExcelSoloEstadoValidado
     return []
-  }, [excelRevision, claveRutExcel, filasExcelSoloEstadoValidado, tablaLista])
+  }, [excelRevision, claveRutExcel, filasExcelSoloEstadoValidado, postulantesOrdenVistaExcel])
 
   const ordenServidorAplicado = useMemo(() => {
     if (!claveRutExcel || filasExcelSoloEstadoValidado.length === 0) return true
-    const ordenadas = ordenarFilasExcelSegunPostulantes(filasExcelSoloEstadoValidado, claveRutExcel, tablaLista)
+    const ordenadas = ordenarFilasExcelSegunPostulantes(
+      filasExcelSoloEstadoValidado,
+      claveRutExcel,
+      postulantesOrdenVistaExcel,
+    )
     return ordenadas.length > 0
-  }, [claveRutExcel, filasExcelSoloEstadoValidado, tablaLista])
+  }, [claveRutExcel, filasExcelSoloEstadoValidado, postulantesOrdenVistaExcel])
 
   /** Total del recuadro azul: filas visibles en la tabla del Excel (Estado Validado + cruce RUT), o listado del servidor si aún no hay planilla. */
   const totalPostulantesVista = useMemo(() => {
@@ -419,7 +438,7 @@ export function FiltroPuntajeTotal() {
               {excelRevision ? (
                 <p className="text-[11px] text-blue-700/90 mt-1 max-w-md">
                   Cuenta las filas de la tabla de abajo (Estado validado: «Validado», «Validada» o <strong>DOC. VALIDADA</strong>{' '}
-                  del export; orden del servidor si el RUT cruza).
+                  del export; orden por puntaje del servidor si el RUT de la fila cruza con un postulante cargado).
                 </p>
               ) : (
                 <p className="text-[11px] text-blue-700/90 mt-1">Según postulantes en el servidor para esta etapa.</p>
@@ -514,22 +533,22 @@ export function FiltroPuntajeTotal() {
                 {claveRutExcel &&
                 claveEstadoExcel &&
                 filasExcelSoloEstadoValidado.length > 0 &&
-                !ordenServidorAplicado ? (
+                !ordenServidorAplicado &&
+                !loading &&
+                !errorPostulantes ? (
                   <div className="rounded-lg border border-amber-300 bg-amber-50 px-3 py-2 text-xs text-amber-950">
-                    {tablaLista.length === 0 ? (
+                    {postulantes.length === 0 ? (
                       <>
-                        En el servidor <strong>no hay postulantes</strong> en esta etapa (documentación validada
-                        {puntajeAplicado != null ? ` y umbral de puntaje ≥ ${puntajeAplicado}` : ''}), así que no se puede
-                        ordenar por puntaje. Las filas del Excel siguen en <strong>orden de archivo</strong>. Pulse{' '}
-                        <strong>Actualizar postulantes</strong> o revise el filtro de puntaje.
+                        Aún <strong>no hay postulantes</strong> cargados desde el servidor (o la lista viene vacía). No se puede
+                        ordenar por puntaje; las filas del Excel siguen en <strong>orden de archivo</strong>. Pulse{' '}
+                        <strong>Actualizar postulantes</strong>.
                       </>
                     ) : (
                       <>
-                        Los RUT del Excel <strong>no coinciden</strong> con los de la lista del servidor (formato distinto,
-                        columna RUT equivocada o datos desactualizados). Se muestran las filas validadas en{' '}
-                        <strong>orden de archivo</strong>. Compruebe que la columna RUT tenga el mismo criterio que el panel
-                        (p. ej. con guión: <span className="font-mono">12.345.678-9</span>) y pulse{' '}
-                        <strong>Actualizar postulantes</strong>.
+                        Los RUT del Excel <strong>no coinciden</strong> con ningún postulante de la lista del servidor (formato,
+                        columna equivocada o personas que ya no están en el sistema). Las filas validadas se muestran en{' '}
+                        <strong>orden de archivo</strong>. Compruebe la columna RUT (p. ej.{' '}
+                        <span className="font-mono">12.345.678-9</span>) y pulse <strong>Actualizar postulantes</strong>.
                       </>
                     )}
                   </div>
@@ -548,16 +567,15 @@ export function FiltroPuntajeTotal() {
                       {claveRutExcel ? (
                         <>
                           {' '}
-                          Orden y cruce por RUT con el listado del servidor
+                          Orden por <strong>puntaje total</strong> según la lista completa de postulantes en el servidor (cruce
+                          por RUT; no solo los que cumplen el umbral activo).
                           {puntajeAplicado != null ? (
                             <>
                               {' '}
-                              (umbral puntaje total <strong>≥ {puntajeAplicado}</strong>)
+                              Umbral registrado: <strong>≥ {puntajeAplicado}</strong> (afecta export/ZIP de arriba, no el orden
+                              de esta tabla).
                             </>
-                          ) : (
-                            <> (documentación validada)</>
-                          )}
-                          .
+                          ) : null}
                         </>
                       ) : (
                         <> Sin columna RUT, sin orden del servidor.</>
