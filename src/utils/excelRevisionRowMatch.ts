@@ -32,6 +32,10 @@ export function findRutColumnKey(headers: string[]): string | null {
     const n = normEncabezado(h)
     if (/^rut([\s(]|$)/.test(n)) return h
   }
+  for (const h of headers) {
+    const n = normEncabezado(h)
+    if (/\brut\b/.test(n)) return h
+  }
   return null
 }
 

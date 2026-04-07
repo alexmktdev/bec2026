@@ -11,18 +11,20 @@ import {
   saveExcelRevisionImportFirestore,
 } from '../../services/excelRevisionFirestoreService'
 import { ExcelRevisionUploadedTable } from './FiltroRevisionDoc/ExcelRevisionUploadedTable'
+import { useAuth } from '../../hooks/useAuth'
 
 export function FiltroRevisionDoc() {
+  const { user, loading: authLoading } = useAuth()
   const inputRef = useRef<HTMLInputElement>(null)
   const [parsed, setParsed] = useState<ExcelRevisionParseResult | null>(null)
   const [parseError, setParseError] = useState<string | null>(null)
   const [leyendo, setLeyendo] = useState(false)
-  const [restaurando, setRestaurando] = useState(true)
+  const [restaurando, setRestaurando] = useState(false)
   const [advertenciaPersistencia, setAdvertenciaPersistencia] = useState<string | null>(null)
   const [recargandoExcel, setRecargandoExcel] = useState(false)
 
   const recargarExcelDesdeFirestore = useCallback(async () => {
-    if (recargandoExcel || leyendo) return
+    if (recargandoExcel || leyendo || !user?.uid) return
     setRecargandoExcel(true)
     setParseError(null)
     setAdvertenciaPersistencia(null)
@@ -34,14 +36,24 @@ export function FiltroRevisionDoc() {
     } finally {
       setRecargandoExcel(false)
     }
-  }, [recargandoExcel, leyendo])
+  }, [recargandoExcel, leyendo, user?.uid])
 
   useEffect(() => {
+    if (authLoading) return
+
+    if (!user?.uid) {
+      setRestaurando(false)
+      setParsed(null)
+      return
+    }
+
     let cancel = false
+    setParseError(null)
+    setRestaurando(true)
     ;(async () => {
       try {
         const snap = await loadExcelRevisionImportFirestore()
-        if (!cancel && snap) setParsed(snap)
+        if (!cancel) setParsed(snap)
       } catch (e) {
         if (!cancel) {
           setParseError(
@@ -55,7 +67,7 @@ export function FiltroRevisionDoc() {
     return () => {
       cancel = true
     }
-  }, [])
+  }, [user?.uid, authLoading])
 
   const abrirSelector = useCallback(() => {
     setParseError(null)
@@ -208,14 +220,14 @@ export function FiltroRevisionDoc() {
           </div>
         )}
 
-        {restaurando && (
+        {(authLoading || restaurando) && (
           <div className="flex items-center justify-center gap-2 py-6 text-sm text-slate-500">
             <span className="h-4 w-4 animate-spin rounded-full border-2 border-blue-200 border-t-blue-700" />
-            Cargando tabla guardada en Firestore…
+            {authLoading ? 'Verificando sesión…' : 'Cargando tabla guardada en Firestore…'}
           </div>
         )}
 
-        {!restaurando && parsed && <ExcelRevisionUploadedTable data={parsed} onClear={quitarVista} />}
+        {!authLoading && !restaurando && parsed && <ExcelRevisionUploadedTable data={parsed} onClear={quitarVista} />}
       </div>
     </AdminLayout>
   )

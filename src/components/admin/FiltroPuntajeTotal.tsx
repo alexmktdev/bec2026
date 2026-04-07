@@ -28,7 +28,7 @@ function rolEsSuperadmin(role: string | undefined): boolean {
 }
 
 export function FiltroPuntajeTotal() {
-  const { userRole } = useAuth()
+  const { user, userRole, loading: authLoading } = useAuth()
   const canManageFiltroPuntaje = rolEsSuperadmin(userRole?.role)
   const {
     postulantes,
@@ -53,12 +53,27 @@ export function FiltroPuntajeTotal() {
   const [mostrarModalOk, setMostrarModalOk] = useState(false)
 
   const [excelRevision, setExcelRevision] = useState<Awaited<ReturnType<typeof loadExcelRevisionImportFirestore>>>(null)
-  const [restaurandoExcel, setRestaurandoExcel] = useState(true)
+  const [restaurandoExcel, setRestaurandoExcel] = useState(false)
   const [recargandoExcel, setRecargandoExcel] = useState(false)
   const [errorExcel, setErrorExcel] = useState<string | null>(null)
 
+  /**
+   * Sin esperar a que exista `user`, `loadExcelRevisionImportFirestore` corre con uid null y devuelve siempre null
+   * (parece “no hay Excel”). Hay que volver a cargar cuando la sesión de Firebase ya está lista.
+   */
   useEffect(() => {
+    if (authLoading) return
+
+    if (!user?.uid) {
+      setRestaurandoExcel(false)
+      setExcelRevision(null)
+      setErrorExcel(null)
+      return
+    }
+
     let cancel = false
+    setRestaurandoExcel(true)
+    setErrorExcel(null)
     ;(async () => {
       try {
         const snap = await loadExcelRevisionImportFirestore()
@@ -74,10 +89,10 @@ export function FiltroPuntajeTotal() {
     return () => {
       cancel = true
     }
-  }, [])
+  }, [user?.uid, authLoading])
 
   const recargarExcelDesdeFirestore = useCallback(async () => {
-    if (recargandoExcel) return
+    if (recargandoExcel || !user?.uid) return
     setRecargandoExcel(true)
     setErrorExcel(null)
     try {
@@ -88,7 +103,7 @@ export function FiltroPuntajeTotal() {
     } finally {
       setRecargandoExcel(false)
     }
-  }, [recargandoExcel])
+  }, [recargandoExcel, user?.uid])
 
   const claveRutExcel = useMemo(
     () => (excelRevision ? findRutColumnKey(excelRevision.headers) : null),
@@ -124,6 +139,16 @@ export function FiltroPuntajeTotal() {
     if (!excelRevision || !claveRutExcel) return []
     return ordenarFilasExcelSegunPostulantes(excelRevision.rows, claveRutExcel, tablaLista)
   }, [excelRevision, claveRutExcel, tablaLista])
+
+  /** Si no hay RUT o el cruce deja 0 filas pero el archivo tiene datos, mostramos la planilla completa para que la tabla nunca “desaparezca”. */
+  const usarExcelCompleto = useMemo(() => {
+    if (!excelRevision?.rows.length) return false
+    if (!claveRutExcel) return true
+    if (filasExcelFiltradas.length === 0) return true
+    return false
+  }, [excelRevision?.rows.length, claveRutExcel, filasExcelFiltradas.length])
+
+  const subsetParaTabla = usarExcelCompleto ? undefined : filasExcelFiltradas
 
   async function handleFiltrarPuntaje() {
     if (!canManageFiltroPuntaje) return
@@ -399,19 +424,26 @@ export function FiltroPuntajeTotal() {
               <div className="rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-800" role="alert">
                 {errorExcel}
               </div>
+            ) : authLoading ? (
+              <div className="flex items-center justify-center gap-2 py-12 text-sm text-slate-600">
+                <span className="h-4 w-4 animate-spin rounded-full border-2 border-blue-200 border-t-blue-700" />
+                Verificando sesión…
+              </div>
             ) : restaurandoExcel ? (
               <div className="flex items-center justify-center gap-2 py-12 text-sm text-slate-500">
                 <span className="h-4 w-4 animate-spin rounded-full border-2 border-blue-200 border-t-blue-700" />
-                Cargando tabla del Excel revisado…
+                Cargando planilla desde la base de datos…
+              </div>
+            ) : !user ? (
+              <div className="rounded-xl border border-amber-200 bg-amber-50/90 p-6 text-sm text-amber-950">
+                Inicie sesión para cargar el Excel guardado en su cuenta.
               </div>
             ) : !excelRevision ? (
               <div className="rounded-xl border border-amber-200 bg-amber-50/90 p-6 text-sm text-amber-950 space-y-3">
                 <p className="font-semibold text-amber-900">Aún no hay un Excel revisado cargado</p>
                 <p className="text-amber-900/90 leading-relaxed">
-                  Esta pestaña muestra la misma planilla que sube en <strong>Revisión de documentación</strong>, pero solo las
-                  filas que corresponden a postulantes con documentación validada y al filtro de puntaje vigente (orden por
-                  puntaje total de mayor a menor). Suba primero el archivo .xlsx en esa pestaña con el mismo usuario con el
-                  que está conectado ahora, o pulse <strong>Recargar Excel</strong> si ya lo subió.
+                  Esta pestaña muestra la misma planilla que sube en <strong>Revisión de documentación</strong>. Suba el .xlsx
+                  allí con este mismo usuario o pulse <strong>Recargar Excel</strong> arriba.
                 </p>
                 <Link
                   to="/admin/filtro-revision-doc"
@@ -420,41 +452,64 @@ export function FiltroPuntajeTotal() {
                   Ir a Revisión de documentación — Subir Excel revisado
                 </Link>
               </div>
-            ) : !claveRutExcel ? (
-              <div className="rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-800">
-                El archivo guardado no tiene una columna <strong>RUT</strong> reconocible; no se puede alinear con el listado
-                del sistema. Vuelva a exportar desde el panel y suba el Excel en revisión de documentación.
-              </div>
             ) : (
-              <ExcelRevisionUploadedTable
-                data={excelRevision}
-                onClear={() => {}}
-                rowsSubset={filasExcelFiltradas}
-                hideQuitarArchivo
-                hidePersistenciaBanner
-                onRowActivate={activarFilaExcel}
-                subtituloFiltro={
-                  <p>
-                    Mismas columnas y estilo que en <strong>Revisión de documentación</strong>. Solo aparecen RUT que existen en
-                    el archivo y en esta etapa
-                    {puntajeAplicado != null ? (
-                      <>
-                        {' '}
-                        con puntaje total <strong>≥ {puntajeAplicado}</strong>
-                      </>
-                    ) : (
-                      <> (todas las filas con documentación validada)</>
-                    )}
-                    . Clic en una fila abre la ficha del postulante. Exportar Excel / ZIP de arriba usa los datos del servidor (
-                    {tablaLista.length} en esta vista).
-                  </p>
-                }
-                mensajeVacioSinBusqueda={
-                  tablaLista.length === 0
-                    ? 'No hay postulantes con documentación validada en esta etapa, o el umbral de puntaje dejó la lista vacía.'
-                    : 'Ningún RUT del Excel coincide con el listado filtrado. Compruebe que el archivo corresponde al mismo proceso y que los RUT coinciden con el panel.'
-                }
-              />
+              <>
+                {!claveRutExcel ? (
+                  <div className="rounded-lg border border-amber-300 bg-amber-50 px-3 py-2 text-xs text-amber-950">
+                    <strong>Sin columna RUT reconocida.</strong> Se muestra el archivo completo. Exporte de nuevo desde el panel
+                    si los encabezados cambiaron.
+                  </div>
+                ) : usarExcelCompleto &&
+                  filasExcelFiltradas.length === 0 &&
+                  excelRevision.rows.length > 0 &&
+                  claveRutExcel &&
+                  tablaLista.length > 0 ? (
+                  <div className="rounded-lg border border-amber-300 bg-amber-50 px-3 py-2 text-xs text-amber-950">
+                    <strong>Ninguna fila coincidió por RUT</strong> con el listado del servidor en esta etapa; se muestra la
+                    planilla completa para revisión. Compruebe formatos de RUT o actualice postulantes.
+                  </div>
+                ) : null}
+                <ExcelRevisionUploadedTable
+                  data={excelRevision}
+                  onClear={() => {}}
+                  rowsSubset={subsetParaTabla}
+                  hideQuitarArchivo
+                  hidePersistenciaBanner
+                  onRowActivate={activarFilaExcel}
+                  subtituloFiltro={
+                    <p>
+                      {usarExcelCompleto ? (
+                        <>
+                          Vista <strong>completa del archivo</strong>
+                          {!claveRutExcel
+                            ? ' (no se detectó columna RUT para filtrar). '
+                            : ' (respaldo porque el cruce con el servidor no devolvió filas). '}
+                        </>
+                      ) : (
+                        <>
+                          Filas alineadas al listado del servidor para esta etapa
+                          {puntajeAplicado != null ? (
+                            <>
+                              {' '}
+                              (puntaje total <strong>≥ {puntajeAplicado}</strong>)
+                            </>
+                          ) : (
+                            <> (documentación validada)</>
+                          )}
+                          .{' '}
+                        </>
+                      )}
+                      Mismo formato que <strong>Revisión de documentación</strong>. Clic en fila abre ficha. Exportar Excel / ZIP
+                      arriba usa {tablaLista.length} postulantes en esta vista.
+                    </p>
+                  }
+                  mensajeVacioSinBusqueda={
+                    excelRevision.rows.length === 0
+                      ? 'El archivo guardado no tiene filas de datos.'
+                      : 'Sin resultados para la búsqueda.'
+                  }
+                />
+              </>
             )}
           </div>
         </div>
