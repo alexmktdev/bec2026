@@ -11,7 +11,12 @@ import { descargarTodosDocumentos } from '../../services/zipDownload'
 import { useAuth } from '../../hooks/useAuth'
 import { ZipDownloadBriefNotice } from './ZipDownloadBriefNotice'
 import { ExcelRevisionUploadedTable } from './FiltroRevisionDoc/ExcelRevisionUploadedTable'
-import { findRutColumnKey, ordenarFilasExcelSegunPostulantes } from '../../utils/excelRevisionRowMatch'
+import {
+  esCeldaEstadoValidado,
+  findEstadoColumnKeyParaValidado,
+  findRutColumnKey,
+  ordenarFilasExcelSegunPostulantes,
+} from '../../utils/excelRevisionRowMatch'
 import { normalizeRut } from '../../postulacion/shared/rut'
 
 function puntajeLabel(p: number) {
@@ -110,6 +115,21 @@ export function FiltroPuntajeTotal() {
     [excelRevision],
   )
 
+  const claveEstadoExcel = useMemo(
+    () =>
+      excelRevision?.rows.length
+        ? findEstadoColumnKeyParaValidado(excelRevision.headers, excelRevision.rows)
+        : null,
+    [excelRevision],
+  )
+
+  /** Solo filas marcadas «Validado»/«Validada» en la columna Estado del Excel. */
+  const filasExcelSoloEstadoValidado = useMemo(() => {
+    if (!excelRevision?.rows.length) return []
+    if (!claveEstadoExcel) return excelRevision.rows
+    return excelRevision.rows.filter((row) => esCeldaEstadoValidado(row[claveEstadoExcel] ?? ''))
+  }, [excelRevision, claveEstadoExcel])
+
   const activarFilaExcel = useCallback(
     (row: ExcelRevisionRow) => {
       if (!claveRutExcel) return
@@ -135,20 +155,18 @@ export function FiltroPuntajeTotal() {
     return ordenarPorPuntajeTotalDesc(base)
   }, [puntajeAplicado, postulantesElegiblesPuntaje, postulantesFiltrados])
 
-  const filasExcelFiltradas = useMemo(() => {
-    if (!excelRevision || !claveRutExcel) return []
-    return ordenarFilasExcelSegunPostulantes(excelRevision.rows, claveRutExcel, tablaLista)
-  }, [excelRevision, claveRutExcel, tablaLista])
+  /** Filas Validado del Excel, ordenadas como el listado del servidor cuando hay columna RUT. */
+  const filasExcelParaMostrar = useMemo(() => {
+    if (!excelRevision) return []
+    if (!claveRutExcel) return filasExcelSoloEstadoValidado
+    return ordenarFilasExcelSegunPostulantes(filasExcelSoloEstadoValidado, claveRutExcel, tablaLista)
+  }, [excelRevision, claveRutExcel, filasExcelSoloEstadoValidado, tablaLista])
 
-  /** Si no hay RUT o el cruce deja 0 filas pero el archivo tiene datos, mostramos la planilla completa para que la tabla nunca “desaparezca”. */
-  const usarExcelCompleto = useMemo(() => {
-    if (!excelRevision?.rows.length) return false
-    if (!claveRutExcel) return true
-    if (filasExcelFiltradas.length === 0) return true
-    return false
-  }, [excelRevision?.rows.length, claveRutExcel, filasExcelFiltradas.length])
-
-  const subsetParaTabla = usarExcelCompleto ? undefined : filasExcelFiltradas
+  /** Total del recuadro azul: filas visibles en la tabla del Excel (Estado Validado + cruce RUT), o listado del servidor si aún no hay planilla. */
+  const totalPostulantesVista = useMemo(() => {
+    if (excelRevision && user) return filasExcelParaMostrar.length
+    return tablaLista.length
+  }, [excelRevision, user, filasExcelParaMostrar.length, tablaLista.length])
 
   async function handleFiltrarPuntaje() {
     if (!canManageFiltroPuntaje) return
@@ -203,9 +221,10 @@ export function FiltroPuntajeTotal() {
           <div className="rounded-xl border border-slate-200 bg-white p-4">
             <div className="mb-3 rounded-lg border border-blue-200 bg-blue-50/80 p-3 text-xs text-blue-900 leading-relaxed">
               <strong>Orden del proceso:</strong> primero se revisa la documentación de todos los postulantes ingresados;
-              solo quienes queden con estado <strong>documentación validada</strong> entran aquí. La tabla principal es la
-              misma planilla que sube en <strong>Revisión de documentación</strong> (mismo formato y columnas), mostrando
-              solo las filas de esta etapa y ordenadas por <strong>puntaje total de mayor a menor</strong>. Al aplicar el
+              solo quienes queden con estado <strong>documentación validada</strong> entran aquí.               La tabla principal es la
+              misma planilla que sube en <strong>Revisión de documentación</strong>, mostrando solo quienes tengan en la
+              columna <strong>Estado</strong> el texto <strong>Validado</strong> (o «Validada»); el resto no aparece. Esas
+              filas se ordenan por <strong>puntaje total de mayor a menor</strong> según el listado del servidor. Al aplicar el
               filtro, el servidor registra el umbral y la lista resultante alimenta la etapa de{' '}
               <strong>filtrado por desempate</strong>.
             </div>
@@ -382,10 +401,19 @@ export function FiltroPuntajeTotal() {
               </svg>
             </div>
             <div>
-              <p className="text-xs font-bold uppercase tracking-widest text-blue-900">Total en esta etapa</p>
+              <p className="text-xs font-bold uppercase tracking-widest text-blue-900">Total en esta vista</p>
               <p className="text-2xl font-black text-blue-800 tracking-tight leading-none mt-1">
-                {tablaLista.length} <span className="text-base font-semibold text-blue-600 tracking-normal">postulantes</span>
+                {totalPostulantesVista}{' '}
+                <span className="text-base font-semibold text-blue-600 tracking-normal">postulantes</span>
               </p>
+              {excelRevision ? (
+                <p className="text-[11px] text-blue-700/90 mt-1 max-w-md">
+                  Cuenta las filas de la tabla de abajo (Excel con columna <strong>Estado</strong> = «Validado» o «Validada»,
+                  ordenadas según el listado del servidor si hay RUT).
+                </p>
+              ) : (
+                <p className="text-[11px] text-blue-700/90 mt-1">Según postulantes en el servidor para esta etapa.</p>
+              )}
             </div>
           </div>
 
@@ -454,59 +482,74 @@ export function FiltroPuntajeTotal() {
               </div>
             ) : (
               <>
+                {!claveEstadoExcel ? (
+                  <div className="rounded-lg border border-amber-300 bg-amber-50 px-3 py-2 text-xs text-amber-950">
+                    <strong>No se encontró columna «Estado».</strong> Se muestran todas las filas del archivo; defina «Validado»
+                    en esa columna y vuelva a subir el Excel para filtrar solo validados.
+                  </div>
+                ) : null}
                 {!claveRutExcel ? (
                   <div className="rounded-lg border border-amber-300 bg-amber-50 px-3 py-2 text-xs text-amber-950">
-                    <strong>Sin columna RUT reconocida.</strong> Se muestra el archivo completo. Exporte de nuevo desde el panel
-                    si los encabezados cambiaron.
+                    <strong>Sin columna RUT.</strong> Filas con Estado Validado se muestran sin ordenar según el servidor.
                   </div>
-                ) : usarExcelCompleto &&
-                  filasExcelFiltradas.length === 0 &&
-                  excelRevision.rows.length > 0 &&
-                  claveRutExcel &&
-                  tablaLista.length > 0 ? (
+                ) : null}
+                {claveEstadoExcel &&
+                filasExcelSoloEstadoValidado.length === 0 &&
+                excelRevision.rows.length > 0 ? (
                   <div className="rounded-lg border border-amber-300 bg-amber-50 px-3 py-2 text-xs text-amber-950">
-                    <strong>Ninguna fila coincidió por RUT</strong> con el listado del servidor en esta etapa; se muestra la
-                    planilla completa para revisión. Compruebe formatos de RUT o actualice postulantes.
+                    Ninguna fila tiene en <strong>Estado</strong> el valor «Validado» o «Validada». Revise el Excel en revisión
+                    de documentación.
+                  </div>
+                ) : null}
+                {claveRutExcel &&
+                claveEstadoExcel &&
+                filasExcelSoloEstadoValidado.length > 0 &&
+                filasExcelParaMostrar.length === 0 &&
+                tablaLista.length > 0 ? (
+                  <div className="rounded-lg border border-amber-300 bg-amber-50 px-3 py-2 text-xs text-amber-950">
+                    Hay filas <strong>Validado</strong> en el Excel, pero ningún RUT coincide con los postulantes de esta etapa
+                    en el servidor. Compruebe formatos de RUT o pulse <strong>Actualizar postulantes</strong>.
                   </div>
                 ) : null}
                 <ExcelRevisionUploadedTable
                   data={excelRevision}
                   onClear={() => {}}
-                  rowsSubset={subsetParaTabla}
+                  rowsSubset={filasExcelParaMostrar}
                   hideQuitarArchivo
                   hidePersistenciaBanner
                   onRowActivate={activarFilaExcel}
                   subtituloFiltro={
                     <p>
-                      {usarExcelCompleto ? (
+                      Solo filas con <strong>Estado</strong> = «Validado» o «Validada» en el Excel.
+                      {claveRutExcel ? (
                         <>
-                          Vista <strong>completa del archivo</strong>
-                          {!claveRutExcel
-                            ? ' (no se detectó columna RUT para filtrar). '
-                            : ' (respaldo porque el cruce con el servidor no devolvió filas). '}
-                        </>
-                      ) : (
-                        <>
-                          Filas alineadas al listado del servidor para esta etapa
+                          {' '}
+                          Orden y cruce por RUT con el listado del servidor
                           {puntajeAplicado != null ? (
                             <>
                               {' '}
-                              (puntaje total <strong>≥ {puntajeAplicado}</strong>)
+                              (umbral puntaje total <strong>≥ {puntajeAplicado}</strong>)
                             </>
                           ) : (
                             <> (documentación validada)</>
                           )}
-                          .{' '}
+                          .
                         </>
-                      )}
-                      Mismo formato que <strong>Revisión de documentación</strong>. Clic en fila abre ficha. Exportar Excel / ZIP
-                      arriba usa {tablaLista.length} postulantes en esta vista.
+                      ) : (
+                        <> Sin columna RUT, sin orden del servidor.</>
+                      )}{' '}
+                      Clic en fila abre ficha. Los botones <strong>Exportar Excel</strong> / <strong>Descargar ZIP</strong> de
+                      arriba siguen usando {tablaLista.length} postulantes del servidor en esta etapa.
                     </p>
                   }
                   mensajeVacioSinBusqueda={
                     excelRevision.rows.length === 0
                       ? 'El archivo guardado no tiene filas de datos.'
-                      : 'Sin resultados para la búsqueda.'
+                      : claveEstadoExcel && filasExcelSoloEstadoValidado.length === 0
+                        ? 'Ninguna fila cumple Estado «Validado» / «Validada».'
+                        : filasExcelParaMostrar.length === 0
+                          ? 'Sin filas que mostrar con los filtros actuales.'
+                          : 'Sin resultados para la búsqueda.'
                   }
                 />
               </>

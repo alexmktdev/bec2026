@@ -39,6 +39,43 @@ export function findRutColumnKey(headers: string[]): string | null {
   return null
 }
 
+/** Acepta «Validado» o «Validada» en el Excel (mayúsculas, espacios, sin tildes inconsistentes). */
+export function esCeldaEstadoValidado(raw: string): boolean {
+  const t = raw
+    .trim()
+    .toLowerCase()
+    .normalize('NFD')
+    .replace(/\p{M}/gu, '')
+  return t === 'validado' || t === 'validada'
+}
+
+function encabezadoPareceEstado(h: string): boolean {
+  const n = normEncabezado(h)
+  if (n === 'estado') return true
+  if (/^estado([\s(]|$)/.test(n)) return true
+  if (/\bestado\b/.test(n)) return true
+  return false
+}
+
+/**
+ * Columnas «Estado» (export del panel puede traer una; la revisión manual puede añadir otra).
+ */
+export function listEstadoColumnKeys(headers: string[]): string[] {
+  return headers.filter(encabezadoPareceEstado)
+}
+
+/**
+ * Elige la columna Estado donde aparezca al menos un «Validado»; si ninguna, usa la primera candidata.
+ */
+export function findEstadoColumnKeyParaValidado(headers: string[], rows: ExcelRevisionRow[]): string | null {
+  const keys = listEstadoColumnKeys(headers)
+  if (keys.length === 0) return null
+  for (const k of keys) {
+    if (rows.some((r) => esCeldaEstadoValidado(r[k] ?? ''))) return k
+  }
+  return keys[0] ?? null
+}
+
 /**
  * Ordena las filas del Excel siguiendo el orden de `postulantes` y dejando solo coincidencias por RUT.
  * Si varias filas del Excel comparten RUT, gana la primera encontrada en el archivo.
