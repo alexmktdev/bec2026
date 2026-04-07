@@ -1,5 +1,6 @@
 import { useMemo, useRef, useState } from 'react'
 import type { ExcelRevisionParseResult, ExcelRevisionRow } from '../../../services/excelRevisionImport'
+import { formatFechaRegistro24h, intentarFormatearFechaRegistroDesdeTexto } from '../../../utils/inputFormatters'
 import { TablePagination } from '../TablePagination'
 import { TableScrollSlider } from '../TableScrollSlider'
 import { tdClassExcelRevisionColumn, thClassExcelRevisionColumn } from './excelRevisionTableStyles'
@@ -20,8 +21,14 @@ interface Props {
   onClear: () => void
 }
 
+function valorCeldaMostrar(header: string, raw: string): string {
+  const h = header.trim().toLowerCase()
+  if (h.includes('fecha registro')) return intentarFormatearFechaRegistroDesdeTexto(raw)
+  return raw
+}
+
 export function ExcelRevisionUploadedTable({ data, onClear }: Props) {
-  const { headers, rows, sheetName, coincideConPlantillaExport } = data
+  const { headers, rows, sheetName, coincideConPlantillaExport, persistedAt } = data
   const [busqueda, setBusqueda] = useState('')
   const [pagina, setPagina] = useState(1)
   const scrollRef = useRef<HTMLDivElement | null>(null)
@@ -40,6 +47,13 @@ export function ExcelRevisionUploadedTable({ data, onClear }: Props) {
 
   return (
     <div className="space-y-4">
+      {persistedAt && (
+        <div className="rounded-lg border border-emerald-200 bg-emerald-50/90 px-3 py-2 text-xs text-emerald-900">
+          <strong>Guardado en Firestore</strong> (proyecto Firebase): última actualización{' '}
+          <span className="font-mono font-semibold">{formatFechaRegistro24h(persistedAt)}</span>. Visible al iniciar sesión
+          con la misma cuenta en cualquier dispositivo; otras cuentas tienen su propia copia.
+        </div>
+      )}
       <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
         <div>
           <p className="text-sm font-bold text-slate-800">
@@ -120,11 +134,15 @@ export function ExcelRevisionUploadedTable({ data, onClear }: Props) {
                       <td className="sticky left-0 z-10 bg-slate-50/95 px-2 py-1.5 text-center text-xs font-bold text-slate-600 tabular-nums shadow-[1px_0_0_0_rgba(241,245,249,1)] border-b border-slate-100">
                         {n}
                       </td>
-                      {headers.map((h) => (
-                        <td key={h} className={tdClassExcelRevisionColumn(h)} title={row[h] || undefined}>
-                          {row[h] ?? ''}
-                        </td>
-                      ))}
+                      {headers.map((h) => {
+                        const raw = row[h] ?? ''
+                        const mostrar = valorCeldaMostrar(h, raw)
+                        return (
+                          <td key={h} className={tdClassExcelRevisionColumn(h)} title={raw || undefined}>
+                            {mostrar}
+                          </td>
+                        )
+                      })}
                     </tr>
                   )
                 })

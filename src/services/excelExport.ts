@@ -1,7 +1,7 @@
 import ExcelJS from 'exceljs'
 import { saveAs } from 'file-saver'
 import type { PostulanteFirestore } from '../types/postulante'
-import { formatDate } from '../utils/inputFormatters'
+import { formatDate, formatFechaRegistro24h } from '../utils/inputFormatters'
 import { resumenCuentaBancariaListado } from '../utils/cuentaBancariaDisplay'
 import { emitirEnlacesDescargaZipDocumentosLote } from './descargaZipPostulanteService'
 
@@ -92,7 +92,7 @@ function toRow(p: PostulanteFirestore): Record<string, unknown> {
     pHermanos: p.puntaje.hermanos,
     pTotal: p.puntaje.total,
     estado: estadoLabel(p.estado),
-    fechaRegistro: p.createdAt ? new Date(p.createdAt).toLocaleString('es-CL') : '—',
+    fechaRegistro: formatFechaRegistro24h(p.createdAt),
   }
 }
 

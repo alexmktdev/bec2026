@@ -67,6 +67,36 @@ export function formatDateTime(isoString: string | undefined | null): string {
   }
 }
 
+/** Fecha/hora local en 24 h: `DD-MM-YYYY HH.mm hrs` (punto entre hora y minutos). */
+export function formatFechaRegistro24hFromDate(d: Date): string {
+  if (Number.isNaN(d.getTime())) return '—'
+  const dd = String(d.getDate()).padStart(2, '0')
+  const mm = String(d.getMonth() + 1).padStart(2, '0')
+  const yyyy = d.getFullYear()
+  const HH = String(d.getHours()).padStart(2, '0')
+  const min = String(d.getMinutes()).padStart(2, '0')
+  return `${dd}-${mm}-${yyyy} ${HH}.${min} hrs`
+}
+
+export function formatFechaRegistro24h(isoString: string | undefined | null): string {
+  if (!isoString) return '—'
+  const d = new Date(isoString)
+  return Number.isNaN(d.getTime()) ? '—' : formatFechaRegistro24hFromDate(d)
+}
+
+/**
+ * Normaliza textos de celda (p. ej. export es-CL con am/pm) al formato 24 h del panel.
+ * Si no se puede interpretar como fecha, devuelve el texto original.
+ */
+export function intentarFormatearFechaRegistroDesdeTexto(text: string): string {
+  const t = text.trim()
+  if (!t) return t
+  if (/\d{1,2}-\d{1,2}-\d{4}.*\d{2}\.\d{2}\s*hrs/i.test(t)) return t
+  const d = new Date(t)
+  if (Number.isNaN(d.getTime())) return t
+  return formatFechaRegistro24hFromDate(d)
+}
+
 /**
  * Formatea fecha/hora en formato "DD-MM-YYYY HH:mm".
  * Si el valor no trae hora (ej. YYYY-MM-DD), devuelve solo "DD-MM-YYYY".

@@ -36,6 +36,9 @@ export function thClassExcelRevisionColumn(label: string): string {
   if (s.includes('descarga documentación') || s.includes('revisor designado')) {
     tone = 'text-sky-800 bg-sky-50/60'
   }
+  if (s.includes('documentos (zip)') || s.includes('reporte pdf') || s === 'acciones') {
+    tone = 'text-sky-800 bg-sky-50/60'
+  }
   return `${TH_BASE} ${tone}`
 }
 
@@ -46,6 +49,8 @@ export function tdClassExcelRevisionColumn(label: string): string {
   const s = label.trim().toLowerCase()
   let tone = 'text-slate-800 bg-white'
   if (s.includes('fecha postulación')) tone = 'text-blue-900 bg-blue-50/25 font-medium'
+  if (s.includes('hora postulación')) tone = 'text-blue-900 bg-blue-50/25 font-medium'
+  if (s.includes('fecha registro')) tone = 'text-slate-900 bg-slate-50/40 font-semibold'
   if (s === 'nem' || (s.includes('nem') && !s.includes('puntaje'))) tone = 'text-indigo-900 bg-indigo-50/25 font-bold'
   if (s.includes('tramo rsh')) tone = 'text-teal-900 bg-teal-50/25 font-semibold'
   if (s.includes('hermano') || s.includes('hijo') || s.includes('hnos')) {
@@ -58,6 +63,9 @@ export function tdClassExcelRevisionColumn(label: string): string {
   if (s.includes('puntaje hermanos') || s.includes('pts. hnos')) tone = 'text-purple-950 bg-purple-50/35 font-bold'
   if (s.includes('puntaje total')) {
     tone = 'text-blue-950 bg-blue-100/90 font-black shadow-[inset_0_0_0_1px_rgba(30,64,175,0.08)]'
+  }
+  if (s.includes('documentos (zip)') || s.includes('reporte pdf') || s === 'acciones') {
+    tone = 'text-slate-800 bg-white text-center align-middle'
   }
   return `${TD_BASE} ${tone}`
 }

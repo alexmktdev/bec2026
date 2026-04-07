@@ -13,6 +13,8 @@ export interface ExcelRevisionParseResult {
   sheetName: string
   /** Coincidencia aproximada con el export del panel (solo informativo). */
   coincideConPlantillaExport: boolean
+  /** ISO 8601: última vez que se guardó en IndexedDB en este navegador. */
+  persistedAt?: string
 }
 
 function celdaATexto(cell: ExcelJS.Cell): string {

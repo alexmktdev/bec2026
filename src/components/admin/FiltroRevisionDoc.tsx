@@ -1,10 +1,15 @@
-import { useCallback, useRef, useState } from 'react'
+import { useCallback, useEffect, useRef, useState } from 'react'
 import { Link } from 'react-router-dom'
 import { AdminLayout } from './AdminLayout'
 import {
   importarExcelRevisionDesdeArchivo,
   type ExcelRevisionParseResult,
 } from '../../services/excelRevisionImport'
+import {
+  clearExcelRevisionImportFirestore,
+  loadExcelRevisionImportFirestore,
+  saveExcelRevisionImportFirestore,
+} from '../../services/excelRevisionFirestoreService'
 import { ExcelRevisionUploadedTable } from './FiltroRevisionDoc/ExcelRevisionUploadedTable'
 
 export function FiltroRevisionDoc() {
@@ -12,6 +17,29 @@ export function FiltroRevisionDoc() {
   const [parsed, setParsed] = useState<ExcelRevisionParseResult | null>(null)
   const [parseError, setParseError] = useState<string | null>(null)
   const [leyendo, setLeyendo] = useState(false)
+  const [restaurando, setRestaurando] = useState(true)
+  const [advertenciaPersistencia, setAdvertenciaPersistencia] = useState<string | null>(null)
+
+  useEffect(() => {
+    let cancel = false
+    ;(async () => {
+      try {
+        const snap = await loadExcelRevisionImportFirestore()
+        if (!cancel && snap) setParsed(snap)
+      } catch (e) {
+        if (!cancel) {
+          setParseError(
+            e instanceof Error ? e.message : 'No se pudo cargar la tabla guardada en Firestore.',
+          )
+        }
+      } finally {
+        if (!cancel) setRestaurando(false)
+      }
+    })()
+    return () => {
+      cancel = true
+    }
+  }, [])
 
   const abrirSelector = useCallback(() => {
     setParseError(null)
@@ -24,15 +52,36 @@ export function FiltroRevisionDoc() {
     if (!file) return
     setLeyendo(true)
     setParseError(null)
+    setAdvertenciaPersistencia(null)
     try {
       const result = await importarExcelRevisionDesdeArchivo(file)
-      setParsed(result)
+      try {
+        const savedAt = await saveExcelRevisionImportFirestore(result)
+        setParsed({ ...result, persistedAt: savedAt })
+      } catch (persistErr) {
+        setParsed({ ...result })
+        setAdvertenciaPersistencia(
+          persistErr instanceof Error
+            ? persistErr.message
+            : 'No se pudo guardar la tabla en Firestore. Compruebe conexión, permisos y reglas de seguridad.',
+        )
+      }
     } catch (err) {
       setParsed(null)
       setParseError(err instanceof Error ? err.message : 'No se pudo leer el archivo.')
     } finally {
       setLeyendo(false)
     }
+  }, [])
+
+  const quitarVista = useCallback(async () => {
+    try {
+      await clearExcelRevisionImportFirestore()
+    } catch {
+      // aun así limpiamos la vista local
+    }
+    setParsed(null)
+    setAdvertenciaPersistencia(null)
   }, [])
 
   return (
@@ -52,8 +101,8 @@ export function FiltroRevisionDoc() {
           <p className="text-sm text-blue-950 leading-relaxed">
             Para descargar la planilla, vaya al <strong>Panel de control</strong> y pulse{' '}
             <strong>«Exportar Excel completo»</strong>. Trabaje el archivo en Excel (columnas adicionales, notas,
-            estados manuales, etc.) y luego súbalo aquí para visualizarlo con el mismo estilo de tabla que el panel
-            (paginación, desplazamiento horizontal y colores por tipo de dato).
+            estados manuales, etc.) y luego súbalo aquí. La tabla se <strong>guarda en Firestore</strong> (como el resto
+            del sistema): podrá recuperarla al recargar la página o desde otro equipo con la misma cuenta.
           </p>
           <div className="flex flex-wrap gap-3 pt-2">
             <Link
@@ -95,9 +144,9 @@ export function FiltroRevisionDoc() {
             onChange={onArchivo}
           />
           <p className="text-xs text-blue-900/80 leading-relaxed border-t border-blue-200/80 pt-4">
-            La carga es <strong>solo en su navegador</strong>: el archivo no se envía a ningún servidor. Se muestran
-            todas las filas y columnas del Excel sin ocultar datos. Límite aproximado: 5&nbsp;000 filas y 64 columnas;
-            archivo hasta 32&nbsp;MB.
+            El archivo se procesa en el navegador y luego los datos se guardan en <strong>Firestore</strong> bajo su
+            usuario (revisor/admin/superadmin). Cada cuenta tiene su propia copia; no sustituye los postulantes del
+            panel. Límite de guardado: 5&nbsp;000 filas; el .xlsx puede pesar hasta 32&nbsp;MB al subirlo.
           </p>
         </section>
 
@@ -110,7 +159,23 @@ export function FiltroRevisionDoc() {
           </div>
         )}
 
-        {parsed && <ExcelRevisionUploadedTable data={parsed} onClear={() => setParsed(null)} />}
+        {advertenciaPersistencia && (
+          <div
+            className="rounded-xl border border-amber-300 bg-amber-50 px-4 py-3 text-sm text-amber-950"
+            role="status"
+          >
+            {advertenciaPersistencia}
+          </div>
+        )}
+
+        {restaurando && (
+          <div className="flex items-center justify-center gap-2 py-6 text-sm text-slate-500">
+            <span className="h-4 w-4 animate-spin rounded-full border-2 border-blue-200 border-t-blue-700" />
+            Cargando tabla guardada en Firestore…
+          </div>
+        )}
+
+        {!restaurando && parsed && <ExcelRevisionUploadedTable data={parsed} onClear={quitarVista} />}
       </div>
     </AdminLayout>
   )

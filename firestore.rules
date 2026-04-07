@@ -70,5 +70,32 @@ service cloud.firestore {
     match /excel_zip_export_batches/{batchId} {
       allow read, write: if false;
     }
+
+    // Tabla de revisión de documentos importada desde Excel (mismo usuario que escribe; revisor/admin/superadmin)
+    match /excel_revision_imports/{userId} {
+      allow read, delete: if isRevisorOrAdmin() && request.auth.uid == userId;
+      allow create, update: if isRevisorOrAdmin() && request.auth.uid == userId
+        && request.resource.data.keys().hasAll([
+          'headers',
+          'sheetName',
+          'coincideConPlantillaExport',
+          'rowCount',
+          'chunkCount',
+          'updatedAt',
+        ])
+        && request.resource.data.headers is list
+        && request.resource.data.sheetName is string
+        && request.resource.data.coincideConPlantillaExport is bool
+        && request.resource.data.rowCount is int
+        && request.resource.data.chunkCount is int
+        && request.resource.data.updatedAt is timestamp;
+    }
+
+    match /excel_revision_imports/{userId}/chunks/{chunkId} {
+      allow read, delete: if isRevisorOrAdmin() && request.auth.uid == userId;
+      allow create, update: if isRevisorOrAdmin() && request.auth.uid == userId
+        && request.resource.data.keys().hasOnly(['rows'])
+        && request.resource.data.rows is list;
+    }
   }
 }
