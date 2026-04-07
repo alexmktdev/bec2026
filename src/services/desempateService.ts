@@ -16,10 +16,18 @@ export type EmpatesResumenDesempate = {
   detalleGrupos: EmpateGrupoDetalle[]
 }
 
+export type FuenteVistaPuntajeDesempate = {
+  sinDatos: boolean
+  totalFilasVista: number
+  umbralActivo: number | null
+  mensaje?: string
+}
+
 type RankingDesempateResponse = {
   postulantes: PostulanteFirestore[]
   criterioHasta: CriterioDesempate | null
   empatesResumen: EmpatesResumenDesempate
+  fuenteVistaPuntaje?: FuenteVistaPuntajeDesempate
 }
 
 /** Fuente única de ranking de desempate: backend. */
@@ -39,6 +47,7 @@ export async function obtenerRankingDesempate(
   return {
     criterioHasta: data.criterioHasta,
     empatesResumen,
+    fuenteVistaPuntaje: data.fuenteVistaPuntaje,
     postulantes: (data.postulantes || []).map((p) => ({
       ...p,
       puntaje: calcularPuntajeTotal(p),

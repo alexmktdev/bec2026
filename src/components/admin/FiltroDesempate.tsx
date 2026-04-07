@@ -7,7 +7,11 @@ import type { PostulanteFirestore } from '../../types/postulante'
 import { formatDate } from '../../utils/inputFormatters'
 import { resumenCuentaBancariaListado } from '../../utils/cuentaBancariaDisplay'
 import { ZipDownloadBriefNotice } from './ZipDownloadBriefNotice'
-import { obtenerRankingDesempate, type EmpatesResumenDesempate } from '../../services/desempateService'
+import {
+  obtenerRankingDesempate,
+  type EmpatesResumenDesempate,
+  type FuenteVistaPuntajeDesempate,
+} from '../../services/desempateService'
 import {
   getCriterioDesempateConfig,
   setCriterioDesempateConfig,
@@ -70,6 +74,7 @@ export function FiltroDesempate() {
   const [avisoZipTick, setAvisoZipTick] = useState(0)
   const [exportando, setExportando] = useState<string | null>(null)
   const [empatesResumen, setEmpatesResumen] = useState<EmpatesResumenDesempate>(EMPATES_VACIO)
+  const [fuenteVistaPuntaje, setFuenteVistaPuntaje] = useState<FuenteVistaPuntajeDesempate | null>(null)
   const scrollRef = useRef<HTMLDivElement>(null)
 
   const cargarRanking = async (criterio: CriterioDesempate | null) => {
@@ -82,10 +87,12 @@ export function FiltroDesempate() {
       const data = await obtenerRankingDesempate(criterio)
       setListaOrdenada(data.postulantes)
       setEmpatesResumen(data.empatesResumen ?? EMPATES_VACIO)
+      setFuenteVistaPuntaje(data.fuenteVistaPuntaje ?? null)
       setCriterioSeleccionado(normalizarCriterioUI(data.criterioHasta))
     } catch (err) {
       console.error('Error cargando ranking de desempate:', err)
       setEmpatesResumen(EMPATES_VACIO)
+      setFuenteVistaPuntaje(null)
       setErrorPostulantes('No se pudo cargar el ranking de desempate. Intente nuevamente.')
     } finally {
       setLoading(false)
@@ -176,13 +183,35 @@ export function FiltroDesempate() {
             <div>
               <h3 className="text-sm font-bold text-blue-900 uppercase tracking-tight">FILTRADO POR DESEMPATE</h3>
               <p className="mt-1 text-xs text-blue-800 leading-relaxed">
-                Entran aquí <strong>todos</strong> los postulantes con <strong>documentación validada</strong> o estado{' '}
-                <strong>aprobado</strong> — <strong>sin tope de cantidad</strong>. La tabla muestra el{' '}
-                <strong>ranking oficial</strong> calculado en backend con criterios acumulables:
-                <strong> puntaje total ↓ → puntaje NEM ↓ → puntaje RSH ↓ → puntaje enfermedad ↓ → puntaje hermanos/hijos ↓ → fecha/hora ↓</strong>.
+                La <strong>entrada</strong> es la misma tabla que en <strong>Filtrado por puntaje total</strong>: filas con
+                Estado «Validado» y, si el superadmin definió umbral global, solo quienes cumplen el puntaje mínimo. Los
+                datos se leen del Excel guardado en Firestore con <strong>su usuario</strong> y se cruzan con los
+                postulantes del sistema por <strong>RUT</strong>. El ranking y los empates los calcula el backend con
+                criterios acumulables:{' '}
+                <strong>
+                  puntaje total ↓ → puntaje NEM ↓ → puntaje RSH ↓ → puntaje enfermedad ↓ → puntaje hermanos/hijos ↓ →
+                  fecha/hora ↓
+                </strong>
+                .
               </p>
             </div>
           </div>
+
+          {fuenteVistaPuntaje && !fuenteVistaPuntaje.sinDatos && (
+            <div className="rounded-lg border border-slate-200 bg-slate-50 px-3 py-2 text-xs text-slate-700">
+              <span className="font-semibold text-slate-800">Vista de origen:</span>{' '}
+              {fuenteVistaPuntaje.totalFilasVista} fila{fuenteVistaPuntaje.totalFilasVista !== 1 ? 's' : ''} en filtrado
+              por puntaje total
+              {fuenteVistaPuntaje.umbralActivo != null ? (
+                <>
+                  {' '}
+                  (umbral activo <strong>≥ {fuenteVistaPuntaje.umbralActivo}</strong> pts.)
+                </>
+              ) : (
+                <> (sin umbral de puntaje; todas las filas validadas).</>
+              )}
+            </div>
+          )}
 
           {/* Resumen Total */}
           <div className="flex items-center gap-4 rounded-xl border border-blue-200 bg-gradient-to-r from-blue-50 to-white p-4 shadow-sm">
@@ -196,7 +225,7 @@ export function FiltroDesempate() {
               <p className="text-2xl font-black text-blue-800 tracking-tight leading-none mt-1">
                 {listaOrdenada.length}{' '}
                 <span className="text-base font-semibold text-blue-600 tracking-normal">
-                  postulantes (documentación validada / aprobados)
+                  postulantes en el ranking (desde su vista de puntaje + Firestore)
                 </span>
               </p>
             </div>
@@ -241,6 +270,14 @@ export function FiltroDesempate() {
                       ? 'Solo se ordena por puntaje total (descendente).'
                       : 'Cada vez que subes un nivel en el menú, se excluyen de “empate” quienes ya se diferenciaron por NEM, RSH, etc.'}
                   </p>
+                  {empatesResumen.gruposConEmpate > 0 && (
+                    <p className="mt-2 text-xs font-medium text-amber-900/95 rounded-md border border-amber-200 bg-amber-100/60 px-2 py-1.5">
+                      Aún hay grupos indistinguibles con el criterio actual. Suba un nivel en el filtro de desempate
+                      (p. ej. de NEM a RSH) y pulse <strong>Aplicar filtro</strong> para intentar separarlos. Si tras
+                      llegar a <strong>fecha/hora</strong> siguen apareciendo aquí, esas personas quedan empatadas en
+                      todos los criterios oficiales.
+                    </p>
+                  )}
                   {empatesResumen.gruposConEmpate > 0 && (
                     <div className="mt-3 space-y-2 max-h-[200px] overflow-y-auto pr-1">
                       {empatesResumen.detalleGrupos.map((grupo, idx) => (
@@ -373,10 +410,16 @@ export function FiltroDesempate() {
                 <svg xmlns="http://www.w3.org/2000/svg" className="h-10 w-10 text-slate-300 mb-3" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}>
                   <path strokeLinecap="round" strokeLinejoin="round" d="M9 12h.01M12 12h.01M15 12h.01M21 12c0 4.418-4.03 8-9 8a9.863 9.863 0 01-4.255-.949L3 20l1.395-3.72C3.512 15.042 3 13.574 3 12c0-4.418 4.03-8 9-8s9 3.582 9 8z" />
                 </svg>
-                <p className="text-slate-600 font-medium">No hay postulantes en esta etapa.</p>
-                <p className="mt-1 text-sm text-slate-400">
-                  Aún no hay postulantes con documentación validada o aprobados en el sistema.
+                <p className="text-slate-600 font-medium">No hay filas para rankear en esta etapa.</p>
+                <p className="mt-1 text-sm text-slate-500 max-w-md mx-auto">
+                  {fuenteVistaPuntaje?.mensaje ??
+                    'Cargue el Excel en Revisión de documentos, verifique Filtrado por puntaje total y vuelva a actualizar esta pestaña.'}
                 </p>
+                {fuenteVistaPuntaje?.sinDatos && (
+                  <p className="mt-2 text-xs text-slate-400">
+                    La lista proviene solo de su vista guardada (misma cuenta que en revisión de documentos).
+                  </p>
+                )}
               </div>
             ) : (
               <>
@@ -485,8 +528,9 @@ export function FiltroDesempate() {
                 </div>
 
                 <div className="border-t border-slate-200 px-4 py-3 text-[10px] text-slate-500">
-                  La columna # es el ranking definitivo de esta etapa (orden calculado en servidor). El recuadro superior
-                  indica si aún hay grupos indistinguibles según el filtro aplicado. Las filas destacadas en verde
+                  La columna # es el ranking definitivo de esta etapa (orden calculado en servidor). La entrada son las
+                  filas de su vista en Filtrado por puntaje total, cruzadas con Firestore por RUT. El recuadro de empates
+                  indica si aún hay grupos indistinguibles según el criterio aplicado. Las filas destacadas en verde
                   corresponden al Top 150.
                 </div>
               </>

@@ -19,6 +19,8 @@ import {
 import { aplicarCorsZipDocumentacionCompleta } from './allowedWebOrigins'
 import { webCallableBase } from './httpsCallableDefaults'
 import { calcularPuntajeTotal } from '../../src/postulacion/shared/scoring'
+import { construirVistaFiltroPuntajeTotal } from './filtroPuntajeTotalVista'
+import { postulantesParaRankingDesdeVistaPuntaje } from './desempateDesdeVistaPuntaje'
 
 /** Lee `tramos` como array (nuevo) o como mapa por uid (legado). */
 function normalizeTramosConfigRaw(raw: unknown): TramoAsignacion[] {
@@ -881,7 +883,9 @@ function serializarParaCallable(data: unknown): unknown {
 
 /**
  * Ranking de desempate calculado en backend.
- * Base: postulantes con documentación validada o aprobados; orden Puntaje total (desc).
+ * Base: filas de la vista «Filtrado por puntaje total» del usuario (Validado + umbral global si aplica),
+ * cruzadas con postulantes en Firestore por RUT (si no hay match, fila solo con datos del Excel).
+ * Orden Puntaje total (desc).
  * Nivel seleccionable acumulable:
  * - nem: + Puntaje NEM (desc)
  * - rsh: + Puntaje NEM (desc) + Puntaje RSH (desc)
@@ -908,10 +912,38 @@ export const obtenerRankingDesempateAdmin = onCall(
       const sortedDocs = ordenarDocsPostulantesComoEnPanel(snapshot.docs)
       const postulantesBase = sortedDocs.map((d) => ({ id: d.id, ...d.data() as Record<string, unknown> }))
 
-      const elegibles = postulantesBase.filter((p) => {
-        const estado = String(p.estado ?? '')
-        return estado === 'documentacion_validada' || estado === 'aprobado'
-      })
+      const vista = await construirVistaFiltroPuntajeTotal(db, callerUid)
+
+      let elegibles: Record<string, unknown>[]
+      let fuenteVistaPuntaje: {
+        sinDatos: boolean
+        totalFilasVista: number
+        umbralActivo: number | null
+        mensaje?: string
+      }
+
+      if (vista.sinExcel || vista.totalVista === 0) {
+        elegibles = []
+        fuenteVistaPuntaje = {
+          sinDatos: true,
+          totalFilasVista: vista.totalVista,
+          umbralActivo: vista.umbralActivo,
+          mensaje: vista.sinExcel
+            ? 'No hay planilla guardada para su usuario. Suba el Excel en Revisión de documentos y use Filtrado por puntaje total.'
+            : 'La vista filtrada no tiene filas (revise columnas Estado / Puntaje total y el umbral global).',
+        }
+      } else {
+        elegibles = postulantesParaRankingDesdeVistaPuntaje(vista, postulantesBase)
+        const sinMatch = elegibles.length === 0 && vista.totalVista > 0
+        fuenteVistaPuntaje = {
+          sinDatos: elegibles.length === 0,
+          totalFilasVista: vista.totalVista,
+          umbralActivo: vista.umbralActivo,
+          mensaje: sinMatch
+            ? 'Ninguna fila de la vista tiene un RUT reconocible o no se pudo armar el listado. Revise el Excel.'
+            : undefined,
+        }
+      }
 
       const ranking = [...elegibles].sort((a, b) => {
         const puntajeA = calcularPuntajeTotal(a as unknown as PostulanteData)
@@ -957,7 +989,7 @@ export const obtenerRankingDesempateAdmin = onCall(
 
       const postulantesJson = ranking.map((p) => serializarParaCallable(p) as Record<string, unknown>)
 
-      return { postulantes: postulantesJson, criterioHasta, empatesResumen }
+      return { postulantes: postulantesJson, criterioHasta, empatesResumen, fuenteVistaPuntaje }
     } catch (e: unknown) {
       console.error('Error obtenerRankingDesempateAdmin:', e)
       if (e instanceof HttpsError) throw e
