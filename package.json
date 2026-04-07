@@ -9,6 +9,7 @@
     "lint": "eslint .",
     "preview": "vite preview",
     "seed:postulantes": "tsx src/scripts/seedPostulantes.ts",
+    "seed:postulantes:100-desempate": "SEED_CANTIDAD=100 SEED_DESEMPATE=1 tsx src/scripts/seedPostulantes.ts",
     "functions:build": "npm --prefix functions run build",
     "deploy:functions": "firebase deploy --only functions",
     "deploy:rules": "firebase deploy --only firestore:rules"

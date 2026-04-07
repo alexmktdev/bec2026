@@ -1,7 +1,13 @@
 /**
- * Script para crear 30 postulantes de prueba con todos sus datos y documentos.
- * Cada ejecución elige datos distintos al azar (nombres, apellidos, emails únicos, etc.);
- * los RUT también son nuevos en cada corrida.
+ * Script para crear postulantes de prueba con todos sus datos y documentos.
+ *
+ * Modo aleatorio (por defecto, 30 filas):
+ *   npx tsx src/scripts/seedPostulantes.ts
+ *   npm run seed:postulantes
+ *
+ * Modo desempate (100 filas, puntajes NEM/RSH/enfermedad/hermanos diversos y repetidos al final para empates):
+ *   npm run seed:postulantes:100-desempate
+ *   SEED_CANTIDAD=100 SEED_DESEMPATE=1 npx tsx src/scripts/seedPostulantes.ts
  *
  * Requisitos que cumple cada postulante:
  * - RUT válido (formato chileno con dígito verificador correcto)
@@ -11,13 +17,14 @@
  *
  * Uso:
  *   1. Colocar serviceAccountKey.json en la raíz del proyecto (debe estar en .gitignore)
- *   2. Ejecutar: npx tsx src/scripts/seedPostulantes.ts
  *
  * Nota: Usa Firebase Admin SDK. Los RUTs se generan con dígito verificador válido.
  */
 
-/** Cantidad fija por ejecución (lotes de prueba). */
-const CANTIDAD_POSTULANTES_SEED = 30
+const MODO_DESEMPATE_100 = process.env.SEED_DESEMPATE === '1'
+const CANTIDAD_POSTULANTES_SEED = MODO_DESEMPATE_100
+  ? Math.min(500, Math.max(1, Number(process.env.SEED_CANTIDAD || 100)))
+  : 30
 
 function randomItem<T>(arr: readonly T[]): T {
   return arr[Math.floor(Math.random() * arr.length)] as T
@@ -280,6 +287,69 @@ type PerfilFijoLote = {
   email: string
 }
 
+type CamposPuntajeSeed = {
+  nem: string
+  tramoRegistroSocial: string
+  enfermedadCatastrofica: string
+  enfermedadCronica: string
+  tieneHermanosOHijosEstudiando: string
+  tieneUnHermanOHijoEstudiando: string
+  tieneDosOMasHermanosOHijosEstudiando: string
+}
+
+/**
+ * 100 perfiles pensados para probar desempate:
+ * - i 0–79: las 20 parejas (NEM banda × tramo RSH) × 4 variantes de enfermedad/hermanos.
+ * - i 80–94: misma grilla con la 5.ª variante (máxima mezcla hermanos/enfermedad).
+ * - i 95–99: mismo puntaje que i 0–4 (empates de criterio; distinto RUT y fecha/hora de postulación).
+ */
+function perfilPuntajeDesempateDesdeIndice(i: number): CamposPuntajeSeed {
+  const i100 = i % 100
+  const nems = ['5.5', '5.8', '6.3', '6.8'] as const
+  const tramos = ['80%', '70%', '60%', '50%', '40%'] as const
+  const herNone = {
+    tieneHermanosOHijosEstudiando: 'No',
+    tieneUnHermanOHijoEstudiando: 'No',
+    tieneDosOMasHermanosOHijosEstudiando: 'No',
+  } as const
+  const herUno = {
+    tieneHermanosOHijosEstudiando: 'Si',
+    tieneUnHermanOHijoEstudiando: 'Si',
+    tieneDosOMasHermanosOHijosEstudiando: 'No',
+  } as const
+  const herDos = {
+    tieneHermanosOHijosEstudiando: 'Si',
+    tieneUnHermanOHijoEstudiando: 'No',
+    tieneDosOMasHermanosOHijosEstudiando: 'Si',
+  } as const
+  const enfVariants = [
+    { enfermedadCatastrofica: 'No', enfermedadCronica: 'No', ...herNone },
+    { enfermedadCatastrofica: 'No', enfermedadCronica: 'Si', ...herNone },
+    { enfermedadCatastrofica: 'Si', enfermedadCronica: 'No', ...herNone },
+    { enfermedadCatastrofica: 'No', enfermedadCronica: 'No', ...herUno },
+    { enfermedadCatastrofica: 'No', enfermedadCronica: 'No', ...herDos },
+  ] as const
+
+  if (i100 >= 95) {
+    const j = i100 - 95
+    const base = j
+    const nem = nems[base % 4]
+    const tramo = tramos[Math.floor(base / 4)]
+    return { nem, tramoRegistroSocial: tramo, ...enfVariants[0] }
+  }
+  if (i100 >= 80) {
+    const base = i100 - 80
+    const nem = nems[base % 4]
+    const tramo = tramos[Math.floor(base / 4)]
+    return { nem, tramoRegistroSocial: tramo, ...enfVariants[4] }
+  }
+  const base = i100 % 20
+  const v = Math.floor(i100 / 20)
+  const nem = nems[base % 4]
+  const tramo = tramos[Math.floor(base / 4)]
+  return { nem, tramoRegistroSocial: tramo, ...enfVariants[v] }
+}
+
 async function crearPostulanteSeed(perfil: PerfilFijoLote): Promise<PostulanteSeed> {
   const rut = generarRutValido()
   const edad = 17 + Math.floor(Math.random() * 7) // 17-23
@@ -379,6 +449,96 @@ async function crearPostulanteSeed(perfil: PerfilFijoLote): Promise<PostulanteSe
   return { data, documentosSubidos, documentUrls }
 }
 
+async function crearPostulanteSeedDesempate(perfil: PerfilFijoLote, indice: number): Promise<PostulanteSeed> {
+  const rut = generarRutValido()
+  const edad = 17 + Math.floor(Math.random() * 7)
+  const añoNac = new Date().getFullYear() - edad
+  const mes = String(1 + Math.floor(Math.random() * 12)).padStart(2, '0')
+  const dia = String(1 + Math.floor(Math.random() * 28)).padStart(2, '0')
+  const fechaNacimiento = `${dia}-${mes}-${añoNac}`
+
+  const pf = perfilPuntajeDesempateDesdeIndice(indice)
+
+  const hoy = new Date()
+  hoy.setMinutes(hoy.getMinutes() - indice * 13 - (indice % 17))
+
+  const fechaPost = hoy.toISOString().slice(0, 10).split('-').reverse().join('-')
+  const hh = String(hoy.getHours()).padStart(2, '0')
+  const mm = String(hoy.getMinutes()).padStart(2, '0')
+  const ss = String(hoy.getSeconds()).padStart(2, '0')
+  const horaPost = `${hh}:${mm}:${ss}`
+
+  const comuna = randomItem(COMUNAS)
+  const calle = randomItem(CALLES)
+  const nCalle = 100 + Math.floor(Math.random() * 3800)
+
+  const data: Record<string, string | boolean> = {
+    nombres: perfil.nombres,
+    apellidoPaterno: perfil.apellidoPaterno,
+    apellidoMaterno: perfil.apellidoMaterno,
+    rut,
+    fechaNacimiento,
+    edad: String(edad),
+    sexo: Math.random() > 0.5 ? 'Masculino' : 'Femenino',
+    estadoCivil: randomItem(['Soltero', 'Soltero', 'Casado'] as const),
+    telefono: `+569${String(Math.floor(10000000 + Math.random() * 90000000))}`,
+    email: perfil.email,
+    domicilioFamiliar: `${calle} ${nCalle}, ${comuna}`,
+    fechaPostulacion: fechaPost,
+    horaPostulacion: horaPost,
+    nem: pf.nem,
+    nombreInstitucion: randomItem(INSTITUCIONES),
+    comuna,
+    carrera: randomItem(CARRERAS),
+    duracionSemestres: randomItem(['8', '10', '12'] as const),
+    anoIngreso: '2026',
+    totalIntegrantes: String(3 + Math.floor(Math.random() * 5)),
+    tramoRegistroSocial: pf.tramoRegistroSocial,
+    tieneHermanosOHijosEstudiando: pf.tieneHermanosOHijosEstudiando,
+    tieneUnHermanOHijoEstudiando: pf.tieneUnHermanOHijoEstudiando,
+    tieneDosOMasHermanosOHijosEstudiando: pf.tieneDosOMasHermanosOHijosEstudiando,
+    enfermedadCatastrofica: pf.enfermedadCatastrofica,
+    enfermedadCronica: pf.enfermedadCronica,
+    tipoCuentaBancaria: 'cuenta_rut',
+    numeroCuenta: String(Math.floor(10_000_000 + Math.random() * 89_999_999)),
+    rutCuenta: rut,
+    otraNumeroCuenta: '',
+    otraTipoCuenta: '',
+    otraBanco: '',
+    otraBancoDetalle: '',
+    otraRutTitular: '',
+    observacion: '',
+    declaracionJuradaAceptada: true,
+  }
+
+  const tieneHermanos = pf.tieneHermanosOHijosEstudiando === 'Si'
+  const documentosSubidos: Record<string, boolean> = {
+    identidad: true,
+    matricula: true,
+    rsh: true,
+    nem: true,
+    ...(tieneHermanos ? { hermanos: true } : {}),
+    ...(pf.enfermedadCatastrofica === 'Si' || pf.enfermedadCronica === 'Si' ? { medico: true } : {}),
+  }
+
+  const docIds = Object.keys(documentosSubidos)
+  const pdfBuffer = await crearPdfPlaceholder()
+  const documentUrls: Record<string, string> = {}
+
+  for (const docId of docIds) {
+    const url = await subirDocumento(
+      rut,
+      data.nombres as string,
+      data.apellidoPaterno as string,
+      docId,
+      pdfBuffer,
+    )
+    documentUrls[docId] = url
+  }
+
+  return { data, documentosSubidos, documentUrls }
+}
+
 // --- Calcular puntaje (mismo algoritmo que scoring.ts) ---
 function calcularPuntaje(data: Record<string, string | boolean>): {
   nem: number
@@ -413,7 +573,13 @@ function calcularPuntaje(data: Record<string, string | boolean>): {
 
 async function main() {
   const runId = `${Date.now()}-${randomUUID().slice(0, 8)}`
-  console.log(`Creando ${CANTIDAD_POSTULANTES_SEED} postulantes de prueba (lote ${runId})...\n`)
+  if (MODO_DESEMPATE_100) {
+    console.log(
+      `Modo DESEMPATE: ${CANTIDAD_POSTULANTES_SEED} postulantes con NEM/RSH/enfermedad/hermanos diversos (lote ${runId})\n`,
+    )
+  } else {
+    console.log(`Creando ${CANTIDAD_POSTULANTES_SEED} postulantes de prueba (lote ${runId})...\n`)
+  }
 
   const nombresLote = sampleWithOptionalRepeat(NOMBRES, CANTIDAD_POSTULANTES_SEED)
   const apPatLote = sampleWithOptionalRepeat(APELLIDOS_P, CANTIDAD_POSTULANTES_SEED)
@@ -426,7 +592,9 @@ async function main() {
       apellidoMaterno: apMatLote[i] as string,
       email: `seed.${runId}.${i + 1}@ejemplo-prueba.cl`,
     }
-    const { data, documentosSubidos, documentUrls } = await crearPostulanteSeed(perfil)
+    const { data, documentosSubidos, documentUrls } = MODO_DESEMPATE_100
+      ? await crearPostulanteSeedDesempate(perfil, i)
+      : await crearPostulanteSeed(perfil)
     const puntaje = calcularPuntaje(data)
 
     const registro = {
@@ -442,9 +610,15 @@ async function main() {
     }
 
     const docRef = await db.collection('postulantes').add(registro)
-    console.log(
-      `  ${i + 1}. ${data.nombres} ${data.apellidoPaterno} - RUT ${data.rut} - NEM ${data.nem} - Edad ${data.edad} - id: ${docRef.id}`,
-    )
+    if (MODO_DESEMPATE_100) {
+      console.log(
+        `  ${i + 1}. ${data.nombres} ${data.apellidoPaterno} - RUT ${data.rut} - Pt NEM ${puntaje.nem} RSH ${puntaje.rsh} Enf ${puntaje.enfermedad} Hnos ${puntaje.hermanos} **Total ${puntaje.total}** - id: ${docRef.id}`,
+      )
+    } else {
+      console.log(
+        `  ${i + 1}. ${data.nombres} ${data.apellidoPaterno} - RUT ${data.rut} - NEM ${data.nem} - Edad ${data.edad} - id: ${docRef.id}`,
+      )
+    }
   }
 
   console.log(

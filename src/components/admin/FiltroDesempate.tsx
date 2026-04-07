@@ -1,5 +1,4 @@
 import { useEffect, useState } from 'react'
-import { useAdminFilter } from '../../contexts/AdminFilterContext'
 import { AdminLayout } from './AdminLayout'
 import { descargarTodosDocumentos } from '../../services/zipDownload'
 import type { PostulanteFirestore } from '../../types/postulante'
@@ -64,7 +63,6 @@ function descripcionClaveEmpate(criterio: CriterioDesempate | 'none'): string {
 // ── Componente principal ──────────────────────────────────────────────────────
 
 export function FiltroDesempate() {
-  const { refrescarPostulantes } = useAdminFilter()
   const [listaOrdenada, setListaOrdenada] = useState<PostulanteFirestore[]>([])
   const [loading, setLoading] = useState(true)
   const [errorPostulantes, setErrorPostulantes] = useState<string | null>(null)
@@ -80,9 +78,9 @@ export function FiltroDesempate() {
     setLoading(true)
     setErrorPostulantes(null)
     try {
-      // El ranking viene del servidor; refrescar el caché local no debe bloquear ni fallar la vista
-      // si Firestore del navegador tiene problemas de red (p. ej. QUIC).
-      void refrescarPostulantes()
+      // El ranking y la nómina cruzada vienen del servidor (`obtenerRankingDesempateAdmin`).
+      // No llamar `refrescarPostulantes()` aquí: evita un segundo `postulantes.get()` completo (N lecturas)
+      // redundante con cada carga o cambio de criterio. El panel se actualiza al entrar / botón Actualizar.
       const data = await obtenerRankingDesempate(criterio)
       setListaOrdenada(data.postulantes)
       setEmpatesResumen(data.empatesResumen ?? EMPATES_VACIO)

@@ -71,9 +71,6 @@ export interface DocumentosSubidos {
 
 export interface PostulanteFirestore extends PostulanteData {
   id?: string
-  assignedTo?: string
-  /** Posición global en la tabla de Revisión de documentación (1-based). */
-  ordenRevisionDoc?: number
   puntaje: PuntajeDesglosado
   estado: EstadoPostulacion
   motivoRechazo: string | null
@@ -93,29 +90,6 @@ export interface UserRole {
   email: string
   displayName: string
   role: 'superadmin' | 'revisor' | 'admin'
-}
-
-export interface TramoAsignacion {
-  /** Clave estable del segmento (varios por mismo revisor permitidos). */
-  segmentId: string
-  reviewerUid: string
-  reviewerEmail: string
-  reviewerName: string
-  startRange: number
-  endRange: number
-  assignedByUid: string
-  assignedByEmail: string
-  createdAt: string
-}
-
-export interface TramoVigenteEstado extends TramoAsignacion {
-  totalAsignados: number
-  /** Postulantes con documentación validada dentro del tramo. */
-  totalValidados: number
-  /** Postulantes rechazados dentro del tramo. */
-  totalRechazados: number
-  totalTerminados: number
-  terminado: boolean
 }
 
 export interface AuditLog {

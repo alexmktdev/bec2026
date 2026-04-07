@@ -77,7 +77,7 @@ function getEstadoLabel(estado: EstadoPostulacion): string {
 }
 
 export function PostulantesTable({ postulantes, onSelectPostulante, onEliminar, onActualizar }: Props) {
-  const { user, userRole } = useAuth()
+  const { userRole } = useAuth()
   const [busqueda, setBusqueda] = useState('')
   const [pagina, setPagina] = useState(1)
   const [descargandoZip, setDescargandoZip] = useState<string | null>(null)
@@ -174,13 +174,16 @@ export function PostulantesTable({ postulantes, onSelectPostulante, onEliminar, 
                 </tr>
               ) : (
                 paginaActual.map((p, index) => {
-                  const isAssigned = userRole?.role === 'superadmin' || p.assignedTo === user?.uid
+                  const puedeOperarFila =
+                    userRole?.role === 'superadmin' ||
+                    userRole?.role === 'admin' ||
+                    userRole?.role === 'revisor'
                   const cuentaResumen = resumenCuentaBancariaListado(p)
 
                   return (
                     <tr
                       key={p.id}
-                      className={`divide-x divide-slate-50 hover:bg-slate-50/90 transition-colors ${!isAssigned ? 'opacity-70' : ''}`}
+                      className={`divide-x divide-slate-50 hover:bg-slate-50/90 transition-colors ${!puedeOperarFila ? 'opacity-70' : ''}`}
                     >
                       <td className="sticky left-0 z-10 bg-slate-50/95 px-2 py-1.5 text-center text-xs font-bold text-slate-600 tabular-nums shadow-[1px_0_0_0_rgba(241,245,249,1)] border-b border-slate-100">
                         {(pagina - 1) * ITEMS_PER_PAGE + index + 1}
@@ -244,11 +247,11 @@ export function PostulantesTable({ postulantes, onSelectPostulante, onEliminar, 
                       <td className={tdClassExcelRevisionColumn('Documentos (ZIP)')}>
                         <button
                           type="button"
-                          onClick={() => (isAssigned ? handleDescargarDocs(p) : alert('No tienes permisos'))}
-                          disabled={descargandoZip === p.id || !isAssigned}
-                          title={!isAssigned ? 'No asignado a ti' : 'Descargar documentos (ZIP)'}
+                          onClick={() => (puedeOperarFila ? handleDescargarDocs(p) : alert('No tienes permisos'))}
+                          disabled={descargandoZip === p.id || !puedeOperarFila}
+                          title={!puedeOperarFila ? 'Sin permisos' : 'Descargar documentos (ZIP)'}
                           className={`inline-flex items-center justify-center rounded p-1 transition-colors ${
-                            !isAssigned
+                            !puedeOperarFila
                               ? 'text-slate-300 cursor-not-allowed'
                               : 'text-slate-500 hover:bg-blue-50 hover:text-blue-600 disabled:opacity-50'
                           }`}
@@ -272,11 +275,11 @@ export function PostulantesTable({ postulantes, onSelectPostulante, onEliminar, 
                       <td className={tdClassExcelRevisionColumn('Reporte PDF')}>
                         <button
                           type="button"
-                          onClick={() => (isAssigned ? handleVerPDF(p) : alert('No tienes permisos'))}
-                          disabled={!!exportandoPdf || !isAssigned}
-                          title={!isAssigned ? 'No asignado a ti' : 'Ver reporte PDF'}
+                          onClick={() => (puedeOperarFila ? handleVerPDF(p) : alert('No tienes permisos'))}
+                          disabled={!!exportandoPdf || !puedeOperarFila}
+                          title={!puedeOperarFila ? 'Sin permisos' : 'Ver reporte PDF'}
                           className={`inline-flex items-center justify-center rounded p-1 transition-colors ${
-                            !isAssigned
+                            !puedeOperarFila
                               ? 'text-slate-300 cursor-not-allowed'
                               : 'text-slate-500 hover:bg-red-50 hover:text-red-600 disabled:opacity-50'
                           }`}
@@ -301,10 +304,10 @@ export function PostulantesTable({ postulantes, onSelectPostulante, onEliminar, 
                         <div className="flex items-center justify-center gap-1">
                           <button
                             type="button"
-                            onClick={() => (isAssigned ? onSelectPostulante(p) : alert('No tienes permisos'))}
-                            title={!isAssigned ? 'No asignado a ti' : 'Ver detalle'}
+                            onClick={() => (puedeOperarFila ? onSelectPostulante(p) : alert('No tienes permisos'))}
+                            title={!puedeOperarFila ? 'Sin permisos' : 'Ver detalle'}
                             className={`rounded p-1 transition-colors ${
-                              !isAssigned ? 'text-slate-300 cursor-not-allowed' : 'text-slate-400 hover:bg-blue-50 hover:text-blue-600'
+                              !puedeOperarFila ? 'text-slate-300 cursor-not-allowed' : 'text-slate-400 hover:bg-blue-50 hover:text-blue-600'
                             }`}
                           >
                             <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
@@ -318,10 +321,10 @@ export function PostulantesTable({ postulantes, onSelectPostulante, onEliminar, 
                           </button>
                           <button
                             type="button"
-                            onClick={() => (isAssigned ? setEditando(p) : alert('No tienes permisos'))}
-                            title={!isAssigned ? 'No asignado a ti' : 'Editar datos'}
+                            onClick={() => (puedeOperarFila ? setEditando(p) : alert('No tienes permisos'))}
+                            title={!puedeOperarFila ? 'Sin permisos' : 'Editar datos'}
                             className={`rounded p-1 transition-colors ${
-                              !isAssigned ? 'text-slate-300 cursor-not-allowed' : 'text-slate-400 hover:bg-amber-50 hover:text-amber-600'
+                              !puedeOperarFila ? 'text-slate-300 cursor-not-allowed' : 'text-slate-400 hover:bg-amber-50 hover:text-amber-600'
                             }`}
                           >
                             <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>

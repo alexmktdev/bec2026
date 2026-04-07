@@ -5,107 +5,15 @@ import * as admin from 'firebase-admin'
 import { DocumentReference, GeoPoint, Timestamp, type DocumentSnapshot } from 'firebase-admin/firestore'
 import { HttpsError, onCall, onRequest } from 'firebase-functions/v2/https'
 import archiver from 'archiver'
-import type {
-  PostulanteData,
-  PostulanteRechazadoEntrada,
-  TramoAsignacion,
-  TramoVigenteEstado,
-  AuditLog,
-} from '../../src/types/postulante'
-import {
-  obtenerSnapshotsPostulantesPorIds,
-  ordenarDocsPostulantesComoEnPanel,
-} from './postulantesOrdenPanel'
+import type { PostulanteData, PostulanteRechazadoEntrada, AuditLog } from '../../src/types/postulante'
+import { ordenarDocsPostulantesComoEnPanel } from './postulantesOrdenPanel'
 import { aplicarCorsZipDocumentacionCompleta } from './allowedWebOrigins'
 import { webCallableBase } from './httpsCallableDefaults'
 import { calcularPuntajeTotal } from '../../src/postulacion/shared/scoring'
 import { construirVistaFiltroPuntajeTotal } from './filtroPuntajeTotalVista'
 import { postulantesParaRankingDesdeVistaPuntaje } from './desempateDesdeVistaPuntaje'
 
-/** Lee `tramos` como array (nuevo) o como mapa por uid (legado). */
-function normalizeTramosConfigRaw(raw: unknown): TramoAsignacion[] {
-  if (Array.isArray(raw)) {
-    return raw as TramoAsignacion[]
-  }
-  if (raw && typeof raw === 'object') {
-    return Object.values(raw as Record<string, TramoAsignacion>)
-  }
-  return []
-}
-
-function segmentosNumericosSeSolapan(
-  a: { startRange: number; endRange: number },
-  b: { startRange: number; endRange: number },
-): boolean {
-  return (
-    (a.startRange >= b.startRange && a.startRange <= b.endRange) ||
-    (a.endRange >= b.startRange && a.endRange <= b.endRange) ||
-    (a.startRange <= b.startRange && a.endRange >= b.endRange)
-  )
-}
-
-/** Solo campos permitidos; rangos y uid validados. */
-function sanitizeTramoAssignment(raw: unknown, index: number): TramoAsignacion {
-  if (!raw || typeof raw !== 'object') {
-    throw new HttpsError('invalid-argument', `Segmento ${index + 1}: datos inválidos.`)
-  }
-  const o = raw as Record<string, unknown>
-  const reviewerUid =
-    typeof o.reviewerUid === 'string' && o.reviewerUid.length > 0 && o.reviewerUid.length < 200
-      ? o.reviewerUid
-      : ''
-  if (!reviewerUid) {
-    throw new HttpsError('invalid-argument', `Segmento ${index + 1}: reviewerUid inválido.`)
-  }
-
-  const reviewerEmail =
-    typeof o.reviewerEmail === 'string' && o.reviewerEmail.length < 320 ? o.reviewerEmail : ''
-  const reviewerName =
-    typeof o.reviewerName === 'string' && o.reviewerName.length < 500 ? o.reviewerName : ''
-
-  const startRange = typeof o.startRange === 'number' ? o.startRange : Number(o.startRange)
-  const endRange = typeof o.endRange === 'number' ? o.endRange : Number(o.endRange)
-  if (!Number.isInteger(startRange) || !Number.isInteger(endRange)) {
-    throw new HttpsError('invalid-argument', `Segmento ${index + 1}: los rangos deben ser números enteros.`)
-  }
-
-  let segmentId =
-    typeof o.segmentId === 'string' && /^[a-zA-Z0-9_.-]{8,128}$/.test(o.segmentId.trim())
-      ? o.segmentId.trim()
-      : ''
-  if (!segmentId) {
-    segmentId = randomUUID()
-  }
-
-  const assignedByUid =
-    typeof o.assignedByUid === 'string' ? o.assignedByUid.slice(0, 200) : ''
-  const assignedByEmail =
-    typeof o.assignedByEmail === 'string' ? o.assignedByEmail.slice(0, 320) : ''
-  const createdAt =
-    typeof o.createdAt === 'string' && o.createdAt.length < 48 ? o.createdAt : new Date().toISOString()
-
-  return {
-    segmentId,
-    reviewerUid,
-    reviewerEmail,
-    reviewerName,
-    startRange,
-    endRange,
-    assignedByUid,
-    assignedByEmail,
-    createdAt,
-  }
-}
-
-function conSegmentIdCompleto(t: TramoAsignacion): TramoAsignacion {
-  if (t.segmentId && t.segmentId.length >= 8) return t
-  return {
-    ...t,
-    segmentId: `legacy-${t.reviewerUid}-${t.startRange}-${t.endRange}`,
-  }
-}
-
-/** Campos que el panel puede enviar; nunca assignedTo, id, createdAt ni puntaje (se recalcula en servidor). */
+/** Campos que el panel puede enviar; nunca id, createdAt ni puntaje (se recalcula en servidor). */
 const POSTULANTE_UPDATE_KEYS = new Set<string>([
   'nombres',
   'apellidoPaterno',
@@ -331,20 +239,9 @@ function carpetaRaizZipPostulante(
   return s.slice(0, 120)
 }
 
-function assertPuedeDescargarDocumentosPostulante(
-  callerUid: string,
-  role: string,
-  postulante: { assignedTo?: unknown },
-): void {
+function assertPuedeDescargarDocumentosPostulante(role: string): void {
   const r = role.toLowerCase().trim()
-  if (r === 'superadmin' || r === 'admin') return
-  if (r === 'revisor') {
-    const assigned = typeof postulante.assignedTo === 'string' ? postulante.assignedTo : ''
-    if (assigned !== callerUid) {
-      throw new HttpsError('permission-denied', 'No tiene asignado este postulante para descargar sus documentos.')
-    }
-    return
-  }
+  if (r === 'superadmin' || r === 'admin' || r === 'revisor') return
   throw new HttpsError('permission-denied', 'No tiene permisos.')
 }
 
@@ -352,34 +249,14 @@ export async function assertRevisorOrAdmin(
   callerUid: string,
   db: admin.firestore.Firestore,
   tokenEmail?: string,
-): Promise<{ email: string }> {
+): Promise<{ email: string; role: string }> {
   const userDoc = await db.collection('users').doc(callerUid).get()
   const role = (userDoc.data()?.role || '').toString().toLowerCase().trim()
   if (!['superadmin', 'revisor', 'admin'].includes(role)) {
     throw new HttpsError('permission-denied', 'No tiene privilegios para esta operación.')
   }
   const email = (tokenEmail || (userDoc.data()?.email as string | undefined) || 'unknown').toString()
-  return { email: email || 'unknown' }
-}
-
-function parseScopePostulanteIdsTramos(raw: unknown): string[] {
-  if (!Array.isArray(raw) || raw.length === 0) {
-    throw new HttpsError(
-      'invalid-argument',
-      'Debe enviar el alcance de la vista de revisión (IDs de postulantes visibles con el filtro actual, no vacío).',
-    )
-  }
-  if (raw.length > 25_000) {
-    throw new HttpsError('invalid-argument', 'El alcance supera el límite permitido.')
-  }
-  const ids = raw.map((x) => String(x ?? '').trim()).filter((s) => s.length > 0)
-  if (ids.length !== raw.length) {
-    throw new HttpsError('invalid-argument', 'Hay IDs vacíos o inválidos en el alcance.')
-  }
-  if (new Set(ids).size !== ids.length) {
-    throw new HttpsError('invalid-argument', 'El alcance no puede contener IDs duplicados.')
-  }
-  return ids
+  return { email: email || 'unknown', role }
 }
 
 async function writeAuditLog(
@@ -410,256 +287,7 @@ export async function verifySuperAdmin(uid: string, db: admin.firestore.Firestor
 }
 
 // -------------------------------------------------------------
-// 1. Asignar Tramos
-// -------------------------------------------------------------
-export const asignarTramosRevisores = onCall(
-  { ...webCallableBase(), memory: '512MiB', timeoutSeconds: 60, maxInstances: 5 },
-  async (request) => {
-    const callerUid = request.auth?.uid
-    const { assignments, scopePostulanteIds } = request.data as {
-      assignments: TramoAsignacion[]
-      scopePostulanteIds?: unknown
-    }
-
-    if (!callerUid) throw new HttpsError('unauthenticated', 'Debe iniciar sesión.')
-    if (!Array.isArray(assignments)) {
-      throw new HttpsError('invalid-argument', 'El payload debe ser un array de asignaciones.')
-    }
-
-    const db = admin.firestore()
-    await verifySuperAdmin(callerUid, db)
-
-    try {
-      const configRef = db.collection('config').doc('tramos_revisores')
-      const { FieldValue } = admin.firestore
-
-      // Limpiar todo: sin tramos en config y sin metadatos de asignación en postulantes.
-      if (assignments.length === 0) {
-        const configBatch = db.batch()
-        configBatch.set(configRef, { tramos: [], updatedAt: new Date().toISOString() })
-
-        const snapshot = await db.collection('postulantes').get()
-        let operations = 0
-        let batch = db.batch()
-
-        const commitBatch = async () => {
-          if (operations > 0) {
-            await batch.commit()
-            batch = db.batch()
-            operations = 0
-          }
-        }
-
-        for (const doc of snapshot.docs) {
-          const raw = doc.data()
-          if (
-            Object.prototype.hasOwnProperty.call(raw, 'assignedTo') ||
-            Object.prototype.hasOwnProperty.call(raw, 'ordenRevisionDoc')
-          ) {
-            batch.update(doc.ref, {
-              assignedTo: FieldValue.delete(),
-              ordenRevisionDoc: FieldValue.delete(),
-            })
-            operations++
-            if (operations >= 400) await commitBatch()
-          }
-        }
-
-        await commitBatch()
-        await configBatch.commit()
-
-        const logRef = db.collection('audit_logs').doc()
-        await logRef.set({
-          adminUid: callerUid,
-          adminEmail: request.auth?.token.email || 'unknown',
-          action: 'ASIGNACION_TRAMOS_LIMPIADA',
-          targetUid: 'SISTEMA',
-          details: 'Se eliminaron todas las asignaciones por tramos y los campos assignedTo/ordenRevisionDoc en postulantes.',
-          timestamp: new Date().toISOString(),
-        } as AuditLog)
-
-        return { ok: true }
-      }
-
-      const cleanAssignments = assignments.map((raw, i) => sanitizeTramoAssignment(raw, i))
-
-      for (const t of cleanAssignments) {
-        if (t.startRange < 1 || t.startRange > t.endRange) {
-          throw new HttpsError('invalid-argument', 'Petición rechazada: El rango es matemáticamente imposible.')
-        }
-      }
-
-      for (let i = 0; i < cleanAssignments.length; i++) {
-        for (let j = i + 1; j < cleanAssignments.length; j++) {
-          const a = cleanAssignments[i]
-          const b = cleanAssignments[j]
-          if (segmentosNumericosSeSolapan(a, b)) {
-            throw new HttpsError(
-              'failed-precondition',
-              `Solapamiento entre segmentos (#${a.startRange}–${a.endRange} y #${b.startRange}–${b.endRange}). No puede haber dos tramos que compartan posiciones.`,
-            )
-          }
-        }
-      }
-
-      const configBatch = db.batch()
-      configBatch.set(configRef, { tramos: cleanAssignments, updatedAt: new Date().toISOString() })
-
-      const scopeIds = parseScopePostulanteIdsTramos(scopePostulanteIds)
-      const scopeSnaps = await obtenerSnapshotsPostulantesPorIds(db, scopeIds)
-      const missingIdx = scopeIds.map((id, i) => (!scopeSnaps[i]?.exists ? id : null)).filter(Boolean) as string[]
-      if (missingIdx.length > 0) {
-        const muestra = missingIdx.slice(0, 5).join(', ')
-        throw new HttpsError(
-          'not-found',
-          `IDs no encontrados en postulantes: ${muestra}${missingIdx.length > 5 ? '…' : ''}`,
-        )
-      }
-
-      const sortedScope = ordenarDocsPostulantesComoEnPanel(scopeSnaps)
-      const scopeLen = sortedScope.length
-
-      for (const t of cleanAssignments) {
-        if (t.startRange > scopeLen || t.endRange > scopeLen) {
-          throw new HttpsError(
-            'invalid-argument',
-            `Los rangos deben estar entre 1 y ${scopeLen} (postulantes en la vista de revisión actual).`,
-          )
-        }
-      }
-
-      const idToPosition = new Map<string, number>()
-      sortedScope.forEach((doc, i) => idToPosition.set(doc.id, i + 1))
-      const inScope = new Set(sortedScope.map((d) => d.id))
-
-      // 3. Fuera del alcance: quitar metadatos de asignación.
-      //    Dentro: aplicar tramo y guardar el número global visible en revisión (`ordenRevisionDoc`).
-      const allSnapshot = await db.collection('postulantes').get()
-      let operations = 0
-      let batch = db.batch()
-
-      const commitBatch = async () => {
-        if (operations > 0) {
-          await batch.commit()
-          batch = db.batch()
-          operations = 0
-        }
-      }
-
-      for (const doc of allSnapshot.docs) {
-        const raw = doc.data()
-        if (!inScope.has(doc.id)) {
-          if (
-            Object.prototype.hasOwnProperty.call(raw, 'assignedTo') ||
-            Object.prototype.hasOwnProperty.call(raw, 'ordenRevisionDoc')
-          ) {
-            batch.update(doc.ref, {
-              assignedTo: FieldValue.delete(),
-              ordenRevisionDoc: FieldValue.delete(),
-            })
-            operations++
-            if (operations >= 400) await commitBatch()
-          }
-          continue
-        }
-
-        const pos = idToPosition.get(doc.id)!
-        const assignedTo =
-          cleanAssignments.find((t) => pos >= t.startRange && pos <= t.endRange)?.reviewerUid || null
-
-        if (raw.assignedTo !== assignedTo || raw.ordenRevisionDoc !== pos) {
-          batch.update(doc.ref, { assignedTo, ordenRevisionDoc: pos })
-          operations++
-          if (operations >= 400) await commitBatch()
-        }
-      }
-
-      await commitBatch()
-      await configBatch.commit()
-
-      const logRef = db.collection('audit_logs').doc()
-      await logRef.set({
-        adminUid: callerUid,
-        adminEmail: request.auth?.token.email || 'unknown',
-        action: 'ASIGNACION_TRAMOS_CREADA',
-        targetUid: 'SISTEMA',
-        details: `Se guardaron ${cleanAssignments.length} segmento(s) de tramo. Alcance: ${scopeLen} postulantes (vista revisión).`,
-        timestamp: new Date().toISOString(),
-      } as AuditLog)
-
-      return { ok: true }
-    } catch (e: unknown) {
-      console.error('Error asignarTramosRevisores:', e)
-      if (e instanceof HttpsError) throw e
-      throw new HttpsError('internal', 'No se pudieron asignar los tramos.')
-    }
-  }
-)
-
-export const obtenerTramosRevisores = onCall(
-  { ...webCallableBase(), memory: '256MiB', timeoutSeconds: 20, maxInstances: 10 },
-  async (request) => {
-    const callerUid = request.auth?.uid
-    if (!callerUid) throw new HttpsError('unauthenticated', 'Debe iniciar sesión.')
-
-    const db = admin.firestore()
-    await assertRevisorOrAdmin(callerUid, db, request.auth?.token?.email)
-
-    try {
-      const docSnap = await db.collection('config').doc('tramos_revisores').get()
-      if (!docSnap.exists) {
-        return { tramos: [] }
-      }
-      const data = docSnap.data()
-      const tramosRaw = normalizeTramosConfigRaw(data?.tramos).map(conSegmentIdCompleto)
-      if (tramosRaw.length === 0) return { tramos: [] }
-
-      const snapshot = await db.collection('postulantes').get()
-
-      const tramos: TramoVigenteEstado[] = tramosRaw.map((t) => {
-        let totalAsignados = 0
-        let totalValidados = 0
-        let totalRechazados = 0
-        let totalTerminados = 0
-        for (const doc of snapshot.docs) {
-          const raw = doc.data() as {
-            assignedTo?: unknown
-            estado?: unknown
-            ordenRevisionDoc?: unknown
-          }
-          const assignedTo = typeof raw.assignedTo === 'string' ? raw.assignedTo : ''
-          if (assignedTo !== t.reviewerUid) continue
-          const orden = Number(raw.ordenRevisionDoc)
-          if (!Number.isFinite(orden) || orden < t.startRange || orden > t.endRange) continue
-          totalAsignados += 1
-          const estado = String(raw.estado || '')
-          if (estado === 'documentacion_validada') {
-            totalValidados += 1
-            totalTerminados += 1
-          } else if (estado === 'rechazado') {
-            totalRechazados += 1
-            totalTerminados += 1
-          }
-        }
-        return {
-          ...t,
-          totalAsignados,
-          totalValidados,
-          totalRechazados,
-          totalTerminados,
-          terminado: totalAsignados > 0 && totalTerminados >= totalAsignados,
-        } satisfies TramoVigenteEstado
-      })
-      return { tramos }
-    } catch (e) {
-      console.error('Error obtenerTramosRevisores:', e)
-      throw new HttpsError('internal', 'Error al obtener los tramos asignados.')
-    }
-  }
-)
-
-// -------------------------------------------------------------
-// 2. Historial de Auditoría
+// 1. Historial de Auditoría
 // -------------------------------------------------------------
 export const registrarAccionAdmin = onCall(
   { ...webCallableBase(), memory: '256MiB', timeoutSeconds: 20, maxInstances: 10 },
@@ -730,7 +358,7 @@ export const obtenerLogsAuditoria = onCall(
   }
 )
 
-// 3. Extracción de Postulantes Segura (Backend Filtering)
+// 2. Extracción de Postulantes Segura (Backend Filtering)
 // -------------------------------------------------------------
 export const obtenerPostulantesRevisor = onCall(
   { ...webCallableBase(), memory: '512MiB', timeoutSeconds: 60, maxInstances: 10 },
@@ -1239,7 +867,7 @@ export const obtenerPostulantesRechazadosEntrada = onCall(
 
 /**
  * Emite un enlace HTTP de un solo uso (token en Firestore) para descargar un ZIP con los documentos del postulante.
- * Solo admin/revisor con asignación correspondiente.
+ * Solo admin/revisor (panel).
  */
 export const emitirEnlaceDescargaZipDocumentos = onCall(
   { ...webCallableBase(), memory: '256MiB', timeoutSeconds: 30, maxInstances: 20 },
@@ -1251,15 +879,12 @@ export const emitirEnlaceDescargaZipDocumentos = onCall(
     if (!postulanteId) throw new HttpsError('invalid-argument', 'postulanteId requerido.')
 
     const db = admin.firestore()
-    const { email } = await assertRevisorOrAdmin(callerUid, db, request.auth?.token?.email)
-    const userDoc = await db.collection('users').doc(callerUid).get()
-    const role = String(userDoc.data()?.role || '').toLowerCase().trim()
+    const { email, role } = await assertRevisorOrAdmin(callerUid, db, request.auth?.token?.email)
 
     const snap = await db.collection('postulantes').doc(postulanteId).get()
     if (!snap.exists) throw new HttpsError('not-found', 'Postulante no encontrado.')
 
-    const pdata = snap.data() as { assignedTo?: unknown }
-    assertPuedeDescargarDocumentosPostulante(callerUid, role, pdata)
+    assertPuedeDescargarDocumentosPostulante(role)
 
     const tokenId = randomUUID()
     await db.collection(DESCARGA_DOCS_ZIP_TOKENS).doc(tokenId).set({
@@ -1295,7 +920,7 @@ function chunkArray<T>(arr: T[], size: number): T[][] {
 /**
  * Emite muchos tokens de descarga ZIP en una sola invocación (p. ej. export Excel).
  * `postulanteIds[i]` corresponde a la fila `i`; cadenas vacías se ignoran.
- * Revisores: solo filas cuyo postulante tenga `assignedTo` = uid del llamante (las demás quedan token vacío en la respuesta).
+ * Admin/revisor autorizado: token por fila con id de postulante (filas sin id o inexistentes quedan vacías).
  */
 export const emitirEnlacesDescargaZipDocumentosLote = onCall(
   { ...webCallableBase(), memory: '256MiB', timeoutSeconds: 60, maxInstances: 20 },
@@ -1319,9 +944,8 @@ export const emitirEnlacesDescargaZipDocumentosLote = onCall(
 
     const postulanteIds = raw.map((x) => String(x ?? '').trim())
     const db = admin.firestore()
-    const { email } = await assertRevisorOrAdmin(callerUid, db, request.auth?.token?.email)
-    const userDoc = await db.collection('users').doc(callerUid).get()
-    const role = String(userDoc.data()?.role || '').toLowerCase().trim()
+    const { email, role } = await assertRevisorOrAdmin(callerUid, db, request.auth?.token?.email)
+    assertPuedeDescargarDocumentosPostulante(role)
 
     const idsParaLeer = [...new Set(postulanteIds.filter((id) => id.length > 0))]
     const snapsMap = new Map<string, DocumentSnapshot>()
@@ -1347,12 +971,6 @@ export const emitirEnlacesDescargaZipDocumentosLote = onCall(
       if (!id) continue
       const snap = snapsMap.get(id)
       if (!snap?.exists) continue
-      const pdata = snap.data() as { assignedTo?: unknown }
-      try {
-        assertPuedeDescargarDocumentosPostulante(callerUid, role, pdata)
-      } catch {
-        continue
-      }
       tokens[i] = id
       allowedSet.add(id)
     }
@@ -1587,13 +1205,11 @@ export const descargarZipDocumentacionCompletaHttp = onRequest(
     try {
       const x = await assertRevisorOrAdmin(decoded.uid, db, decoded.email)
       email = x.email
+      assertPuedeDescargarDocumentosPostulante(x.role)
     } catch {
       res.status(403).send('Sin permisos.')
       return
     }
-
-    const userDoc = await db.collection('users').doc(decoded.uid).get()
-    const role = String(userDoc.data()?.role || '').toLowerCase().trim()
 
     const refChunks = chunkArray(
       postulanteIds.map((id) => db.collection('postulantes').doc(id)),
@@ -1613,13 +1229,7 @@ export const descargarZipDocumentacionCompletaHttp = onRequest(
     for (const id of postulanteIds) {
       const snap = snapsMap.get(id)
       if (!snap?.exists) continue
-      const pdata = snap.data() as { assignedTo?: unknown }
-      try {
-        assertPuedeDescargarDocumentosPostulante(decoded.uid, role, pdata)
-      } catch {
-        continue
-      }
-      permitidos.push({ id, pdata: pdata as Record<string, unknown> })
+      permitidos.push({ id, pdata: snap.data() as Record<string, unknown> })
     }
 
     if (permitidos.length === 0) {
