@@ -12,7 +12,7 @@ import {
 } from '../../services/excelRevisionFirestoreService'
 import { ExcelRevisionUploadedTable } from './FiltroRevisionDoc/ExcelRevisionUploadedTable'
 import { useAuth } from '../../hooks/useAuth'
-import { esCeldaEstadoValidado, findEstadoColumnKeyParaValidado } from '../../utils/excelRevisionRowMatch'
+import { computeTotalesEstadoRevisionPlanilla } from '../../utils/excelRevisionRowMatch'
 
 export function FiltroRevisionDoc() {
   const { user, loading: authLoading } = useAuth()
@@ -115,15 +115,7 @@ export function FiltroRevisionDoc() {
 
   const totalesPlanilla = useMemo(() => {
     if (!parsed) return null
-    const totalFilas = parsed.rows.length
-    const estadoKey = findEstadoColumnKeyParaValidado(parsed.headers, parsed.rows)
-    let validados = 0
-    if (estadoKey) {
-      for (const r of parsed.rows) {
-        if (esCeldaEstadoValidado(r[estadoKey] ?? '')) validados++
-      }
-    }
-    return { totalFilas, validados, tieneColumnaEstado: estadoKey != null }
+    return computeTotalesEstadoRevisionPlanilla(parsed)
   }, [parsed])
 
   return (
@@ -268,12 +260,20 @@ export function FiltroRevisionDoc() {
                   <span className="text-sm font-semibold text-blue-600 ml-1">filas en la tabla</span>
                 </p>
                 {totalesPlanilla.tieneColumnaEstado ? (
-                  <p className="text-sm font-semibold text-blue-700 mt-1">
-                    <span className="text-xl font-black tabular-nums">{totalesPlanilla.validados}</span>
-                    <span className="text-slate-600 font-medium text-sm ml-2">
-                      con Estado <span className="text-blue-600 font-semibold">«Validado»</span>
-                    </span>
-                  </p>
+                  <div className="mt-1 space-y-1 text-sm font-semibold text-blue-700">
+                    <p>
+                      <span className="text-xl font-black tabular-nums">{totalesPlanilla.validados}</span>
+                      <span className="text-slate-600 font-medium text-sm ml-2">
+                        con Estado <span className="text-blue-600 font-semibold">«Validado»</span>
+                      </span>
+                    </p>
+                    <p>
+                      <span className="text-xl font-black tabular-nums">{totalesPlanilla.rechazados}</span>
+                      <span className="text-slate-600 font-medium text-sm ml-2">
+                        con Estado <span className="text-red-600 font-semibold">«Rechazado»</span>
+                      </span>
+                    </p>
+                  </div>
                 ) : (
                   <p className="text-xs text-slate-500 mt-1">
                     No hay columna de Estado reconocible; solo se muestra el total de filas.

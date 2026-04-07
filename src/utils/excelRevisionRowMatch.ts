@@ -1,4 +1,4 @@
-import type { ExcelRevisionRow } from '../services/excelRevisionImport'
+import type { ExcelRevisionParseResult, ExcelRevisionRow } from '../services/excelRevisionImport'
 import type { PostulanteFirestore } from '../types/postulante'
 import { rutClaveParaComparacion } from '../postulacion/shared/rut'
 
@@ -57,6 +57,24 @@ export function esCeldaEstadoValidado(raw: string): boolean {
   return false
 }
 
+/**
+ * Celda «Rechazado» manual o etiqueta tipo export del panel (RECHAZADO).
+ */
+export function esCeldaEstadoRechazado(raw: string): boolean {
+  const t = raw
+    .trim()
+    .toLowerCase()
+    .normalize('NFD')
+    .replace(/\p{M}/gu, '')
+    .replace(/\./g, ' ')
+    .replace(/\s+/g, ' ')
+    .trim()
+  if (t === 'rechazado' || t === 'rechazada') return true
+  if (t === 'doc rechazado' || t === 'doc rechazada') return true
+  if (t === 'documentacion rechazada' || t === 'documentacion rechazado') return true
+  return false
+}
+
 /** «Estado Civil» no es el estado de revisión documental (evita elegir la primera columna equivocada). */
 function encabezadoEsEstadoCivil(h: string): boolean {
   const n = normEncabezado(h)
@@ -89,6 +107,90 @@ export function findEstadoColumnKeyParaValidado(headers: string[], rows: ExcelRe
     if (rows.some((r) => esCeldaEstadoValidado(r[k] ?? ''))) return k
   }
   return keys[0] ?? null
+}
+
+function celdaNormRevision(raw: string): string {
+  return raw.trim().toLowerCase().normalize('NFD').replace(/\p{M}/gu, '')
+}
+
+/** Solo para puntuar columnas candidatas (misma lógica que `filtroPuntajeTotalLogic` en Functions). */
+function celdaEsValidadoORechazadoRevision(raw: string): boolean {
+  const t = celdaNormRevision(raw)
+  return t === 'validado' || t === 'rechazado'
+}
+
+function prioridadEncabezadoEstadoRevision(h: string): number {
+  const n = normEncabezado(h)
+  if (/^estado\s*\(\d+\)\s*$/.test(n)) return 0
+  if (n === 'estado') return 2
+  return 1
+}
+
+/**
+ * Columna de revisión «Validado/Rechazado» (alineada con servidor: vista filtro puntaje / desempate).
+ */
+export function findEstadoRevisionColumnKey(headers: string[], rows: ExcelRevisionRow[]): string | null {
+  const candidates = headers.filter(encabezadoPareceEstado)
+  if (candidates.length === 0) return null
+  if (candidates.length === 1) return candidates[0]
+
+  let bestScore = -1
+  const scores = new Map<string, number>()
+  for (const k of candidates) {
+    let s = 0
+    for (const r of rows) {
+      if (celdaEsValidadoORechazadoRevision(r[k] ?? '')) s++
+    }
+    scores.set(k, s)
+    if (s > bestScore) bestScore = s
+  }
+
+  const tier = candidates.filter((k) => (scores.get(k) ?? 0) === bestScore)
+  const headerIndex = (k: string) => headers.indexOf(k)
+
+  tier.sort((a, b) => {
+    const pa = prioridadEncabezadoEstadoRevision(a)
+    const pb = prioridadEncabezadoEstadoRevision(b)
+    if (pa !== pb) return pa - pb
+    return headerIndex(a) - headerIndex(b)
+  })
+
+  return tier[0] ?? candidates[0]
+}
+
+export type TotalesEstadoRevisionPlanilla = {
+  totalFilas: number
+  validados: number
+  rechazados: number
+  tieneColumnaEstado: boolean
+}
+
+/**
+ * Conteos de «Validado» / «Rechazado» usando la misma columna Estado que el filtrado por puntaje en servidor.
+ */
+export function computeTotalesEstadoRevisionPlanilla(
+  parsed: ExcelRevisionParseResult | null,
+): TotalesEstadoRevisionPlanilla {
+  if (!parsed || parsed.rows.length === 0) {
+    return { totalFilas: 0, validados: 0, rechazados: 0, tieneColumnaEstado: false }
+  }
+  const estadoKey = findEstadoRevisionColumnKey(parsed.headers, parsed.rows)
+  if (!estadoKey) {
+    return { totalFilas: parsed.rows.length, validados: 0, rechazados: 0, tieneColumnaEstado: false }
+  }
+  let validados = 0
+  let rechazados = 0
+  for (const r of parsed.rows) {
+    const cell = r[estadoKey] ?? ''
+    if (esCeldaEstadoValidado(cell)) validados++
+    else if (esCeldaEstadoRechazado(cell)) rechazados++
+  }
+  return {
+    totalFilas: parsed.rows.length,
+    validados,
+    rechazados,
+    tieneColumnaEstado: true,
+  }
 }
 
 /**
