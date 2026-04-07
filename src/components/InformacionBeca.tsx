@@ -12,7 +12,7 @@ const REQUISITOS_EXCLUYENTES = [
   'Estar matriculado/a en el año en curso en carrera técnica o profesional en institución reconocida por el Ministerio de Educación.',
   'Grupo familiar categorizado hasta el 70% de menores ingresos según RSH.',
   'Promedio NEM igual o superior a 5.5.',
-  'Podrán postular sólo alumnos egresados de enseñanza media entre 17 y 23 años, que ingresen por primera vez a educación superior.',
+  'Podrán postular sólo alumnos egresados de enseñanza media entre 17 y 23 años, que ingresen por primera vez a la educación superior.',
   'No ser funcionario/a municipal, bajo ningún estatuto de contratación.',
   'No ser hijo/a de funcionario/a municipal, bajo ningún estatuto de contratación.',
   'El/la postulante debe figurar como integrante del grupo familiar en la cartola del RSH (si no figura, la postulación es inadmisible).',
