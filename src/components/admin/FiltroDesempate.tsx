@@ -1,13 +1,12 @@
-import { useEffect, useMemo, useRef, useState } from 'react'
+import { useEffect, useState } from 'react'
 import { useAdminFilter } from '../../contexts/AdminFilterContext'
 import { AdminLayout } from './AdminLayout'
 import { exportarExcel } from '../../services/excelExport'
 import { descargarTodosDocumentos } from '../../services/zipDownload'
 import type { PostulanteFirestore } from '../../types/postulante'
-import { formatDate } from '../../utils/inputFormatters'
-import { resumenCuentaBancariaListado } from '../../utils/cuentaBancariaDisplay'
+import type { ExcelRevisionParseResult } from '../../services/excelRevisionImport'
 import { ZipDownloadBriefNotice } from './ZipDownloadBriefNotice'
-import { TablePagination } from './TablePagination'
+import { ExcelRevisionUploadedTable } from './FiltroRevisionDoc/ExcelRevisionUploadedTable'
 import {
   obtenerRankingDesempate,
   type EmpatesResumenDesempate,
@@ -20,10 +19,6 @@ import {
   type CriterioDesempate,
 } from '../../services/filtroConfigService'
 
-const ITEMS_POR_PAGINA_DESEMPATE = 10
-
-const TD = 'px-3 py-2 text-xs text-slate-700 whitespace-nowrap border-b border-slate-100'
-const TH = 'px-3 py-2.5 text-left text-[10px] font-bold uppercase tracking-widest text-slate-500 whitespace-nowrap bg-slate-50 border-b border-slate-200'
 const CRITERIOS_ACUMULABLES: { value: CriterioDesempate | 'none'; label: string }[] = [
   { value: 'none', label: 'Sin filtro activo (solo puntaje total)' },
   { value: 'nem', label: '2° filtro: Puntaje total + Puntaje NEM' },
@@ -78,17 +73,7 @@ export function FiltroDesempate() {
   const [exportando, setExportando] = useState<string | null>(null)
   const [empatesResumen, setEmpatesResumen] = useState<EmpatesResumenDesempate>(EMPATES_VACIO)
   const [fuenteVistaPuntaje, setFuenteVistaPuntaje] = useState<FuenteVistaPuntajeDesempate | null>(null)
-  const [paginaTabla, setPaginaTabla] = useState(1)
-  const scrollRef = useRef<HTMLDivElement>(null)
-
-  useEffect(() => {
-    setPaginaTabla(1)
-  }, [listaOrdenada])
-
-  const filasPaginaDesempate = useMemo(() => {
-    const start = (paginaTabla - 1) * ITEMS_POR_PAGINA_DESEMPATE
-    return listaOrdenada.slice(start, start + ITEMS_POR_PAGINA_DESEMPATE)
-  }, [listaOrdenada, paginaTabla])
+  const [tablaExcelDesempate, setTablaExcelDesempate] = useState<ExcelRevisionParseResult | null>(null)
 
   const cargarRanking = async (criterio: CriterioDesempate | null) => {
     setLoading(true)
@@ -101,11 +86,14 @@ export function FiltroDesempate() {
       setListaOrdenada(data.postulantes)
       setEmpatesResumen(data.empatesResumen ?? EMPATES_VACIO)
       setFuenteVistaPuntaje(data.fuenteVistaPuntaje ?? null)
+      setTablaExcelDesempate(data.tablaExcelDesempate ?? null)
       setCriterioSeleccionado(normalizarCriterioUI(data.criterioHasta))
     } catch (err) {
       console.error('Error cargando ranking de desempate:', err)
+      setListaOrdenada([])
       setEmpatesResumen(EMPATES_VACIO)
       setFuenteVistaPuntaje(null)
+      setTablaExcelDesempate(null)
       setErrorPostulantes('No se pudo cargar el ranking de desempate. Intente nuevamente.')
     } finally {
       setLoading(false)
@@ -422,7 +410,7 @@ export function FiltroDesempate() {
               <div className="flex justify-center py-20">
                 <div className="h-10 w-10 animate-spin rounded-full border-4 border-blue-200 border-t-blue-700" />
               </div>
-            ) : listaOrdenada.length === 0 ? (
+            ) : listaOrdenada.length === 0 || !tablaExcelDesempate || tablaExcelDesempate.rows.length === 0 ? (
               <div className="flex flex-col items-center justify-center py-20 text-center px-6">
                 <svg xmlns="http://www.w3.org/2000/svg" className="h-10 w-10 text-slate-300 mb-3" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}>
                   <path strokeLinecap="round" strokeLinejoin="round" d="M9 12h.01M12 12h.01M15 12h.01M21 12c0 4.418-4.03 8-9 8a9.863 9.863 0 01-4.255-.949L3 20l1.395-3.72C3.512 15.042 3 13.574 3 12c0-4.418 4.03-8 9-8s9 3.582 9 8z" />
@@ -439,130 +427,25 @@ export function FiltroDesempate() {
                 )}
               </div>
             ) : (
-              <>
-                {/* Flechas de desplazamiento */}
-                <div className="flex items-center justify-end gap-2 border-b border-slate-200 px-3 py-2">
-                  <button type="button" onClick={() => scrollRef.current?.scrollBy({ left: -700, behavior: 'smooth' })} className="rounded-lg border border-slate-300 bg-white px-2.5 py-1 text-slate-600 hover:bg-slate-50">
-                    <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}><path strokeLinecap="round" strokeLinejoin="round" d="M15 19l-7-7 7-7" /></svg>
-                  </button>
-                  <button type="button" onClick={() => scrollRef.current?.scrollBy({ left: 700, behavior: 'smooth' })} className="rounded-lg border border-slate-300 bg-white px-2.5 py-1 text-slate-600 hover:bg-slate-50">
-                    <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}><path strokeLinecap="round" strokeLinejoin="round" d="M9 5l7 7-7 7" /></svg>
-                  </button>
-                </div>
-
-                <div ref={scrollRef} className="overflow-x-auto no-scrollbar">
-                  <table className="w-full border-collapse text-left">
-                    <thead>
-                      <tr>
-                        {/* Columna # sticky izquierda */}
-                        <th className={`${TH} sticky left-0 z-10 bg-slate-50 border-r border-slate-200 w-12 text-center`}>#</th>
-                        <th className={TH}>Nombres</th>
-                        <th className={TH}>Ap. Paterno</th>
-                        <th className={TH}>Ap. Materno</th>
-                        <th className={TH}>RUT</th>
-                        <th className={TH}>F. Nacimiento</th>
-                        <th className={TH}>Edad</th>
-                        <th className={TH}>Sexo</th>
-                        <th className={TH}>Est. Civil</th>
-                        <th className={TH}>Teléfono</th>
-                        <th className={TH}>Email</th>
-                        <th className={TH}>Domicilio</th>
-                        <th className={`${TH} bg-blue-50/50 text-blue-700`}>F. Postulación</th>
-                        <th className={`${TH} bg-blue-50/50 text-blue-700`}>Hora</th>
-                        <th className={`${TH} bg-indigo-50 text-indigo-700`}>NEM</th>
-                        <th className={TH}>Institución</th>
-                        <th className={TH}>Comuna</th>
-                        <th className={TH}>Carrera</th>
-                        <th className={TH}>Semestres</th>
-                        <th className={TH}>Matrícula en curso (año)</th>
-                        <th className={TH}>Total Integr.</th>
-                        <th className={`${TH} bg-teal-50 text-teal-700`}>Tramo RSH</th>
-                        <th className={`${TH} bg-purple-50 text-purple-700`}>Hnos./Hijos Est.</th>
-                        <th className={`${TH} bg-purple-50 text-purple-700`}>1 Hno./Hijo</th>
-                        <th className={`${TH} bg-purple-50 text-purple-700`}>2+ Hnos./Hijos</th>
-                        <th className={`${TH} bg-rose-50 text-rose-700`}>Enf. Catastrófica</th>
-                        <th className={`${TH} bg-rose-50 text-rose-700`}>Enf. Crónica</th>
-                        <th className={TH}>Cuenta bancaria</th>
-                        <th className={TH}>Observaciones</th>
-                        <th className={`${TH} text-indigo-700 bg-indigo-50/80`}>Pt. NEM</th>
-                        <th className={`${TH} text-teal-700 bg-teal-50/80`}>Pt. RSH</th>
-                        <th className={`${TH} text-rose-700 bg-rose-50/80`}>Pt. Enf.</th>
-                        <th className={`${TH} text-purple-700 bg-purple-50/80`}>Pt. Hnos.</th>
-                        <th className={`${TH} text-blue-900 font-black bg-blue-100`}>Pt. TOTAL</th>
-                        <th className={TH}>F. Registro</th>
-                      </tr>
-                    </thead>
-                    <tbody>
-                      {filasPaginaDesempate.map((p, idx) => {
-                        const pos = (paginaTabla - 1) * ITEMS_POR_PAGINA_DESEMPATE + idx + 1
-                        const isTop150 = pos <= 150
-                        return (
-                          <tr
-                            key={`${String(p.id ?? '')}-${pos}`}
-                            className={`group transition-colors hover:bg-slate-50 ${isTop150 ? 'bg-emerald-50/40' : ''}`}
-                          >
-                            <td className={`sticky left-0 z-10 border-r border-slate-200 px-2 py-2 text-center text-sm font-bold text-slate-700 border-b border-slate-100 group-hover:bg-slate-50 ${isTop150 ? 'bg-emerald-50/70' : 'bg-white'}`}>
-                              {pos}
-                            </td>
-                            <td className={TD}>{p.nombres}</td>
-                            <td className={TD}>{p.apellidoPaterno}</td>
-                            <td className={TD}>{p.apellidoMaterno}</td>
-                            <td className={TD}>{p.rut}</td>
-                            <td className={TD}>{formatDate(p.fechaNacimiento)}</td>
-                            <td className={TD}>{p.edad}</td>
-                            <td className={TD}>{p.sexo}</td>
-                            <td className={TD}>{p.estadoCivil}</td>
-                            <td className={TD}>{p.telefono}</td>
-                            <td className={TD}>{p.email}</td>
-                            <td className={TD}>{p.domicilioFamiliar}</td>
-                            <td className={`${TD} bg-blue-50/20 font-medium italic`}>{formatDate(p.fechaPostulacion)}</td>
-                            <td className={`${TD} bg-blue-50/20 font-medium italic`}>{p.horaPostulacion || '—'}</td>
-                            <td className={`${TD} bg-indigo-50/30 text-indigo-700 font-bold`}>{p.nem}</td>
-                            <td className={TD}>{p.nombreInstitucion}</td>
-                            <td className={TD}>{p.comuna}</td>
-                            <td className={TD}>{p.carrera}</td>
-                            <td className={TD}>{p.duracionSemestres}</td>
-                            <td className={TD}>{p.anoIngreso}</td>
-                            <td className={TD}>{p.totalIntegrantes}</td>
-                            <td className={`${TD} bg-teal-50/30 text-teal-700 font-bold`}>{p.tramoRegistroSocial}</td>
-                            <td className={`${TD} bg-purple-50/20 text-purple-700 font-medium text-center`}>{p.tieneHermanosOHijosEstudiando}</td>
-                            <td className={`${TD} bg-purple-50/20 text-purple-700 font-medium text-center`}>{p.tieneUnHermanOHijoEstudiando}</td>
-                            <td className={`${TD} bg-purple-50/20 text-purple-700 font-medium text-center`}>{p.tieneDosOMasHermanosOHijosEstudiando}</td>
-                            <td className={`${TD} bg-rose-50/20 text-rose-700 font-medium text-center`}>{p.enfermedadCatastrofica}</td>
-                            <td className={`${TD} bg-rose-50/20 text-rose-700 font-medium text-center`}>{p.enfermedadCronica}</td>
-                            <td className={`${TD} max-w-[220px] text-[10px] leading-tight`} title={resumenCuentaBancariaListado(p)}>
-                              {resumenCuentaBancariaListado(p)}
-                            </td>
-                            <td className={`${TD} max-w-[200px] truncate`}>{p.observacion}</td>
-                            <td className={`${TD} text-indigo-800 bg-indigo-50/40 font-bold`}>{p.puntaje.nem}</td>
-                            <td className={`${TD} text-teal-800 bg-teal-50/40 font-bold`}>{p.puntaje.rsh}</td>
-                            <td className={`${TD} text-rose-800 bg-rose-50/40 font-bold`}>{p.puntaje.enfermedad}</td>
-                            <td className={`${TD} text-purple-800 bg-purple-50/40 font-bold`}>{p.puntaje.hermanos}</td>
-                            <td className={`${TD} text-blue-900 font-black bg-blue-100 shadow-[inset_0_0_0_1px_rgba(30,64,175,0.1)]`}>{p.puntaje.total}</td>
-                            <td className={TD}>{p.createdAt ? new Date(p.createdAt).toLocaleString('es-CL') : '—'}</td>
-                          </tr>
-                        )
-                      })}
-                    </tbody>
-                  </table>
-                </div>
-
-                <div className="border-t border-slate-200 bg-slate-50/80 px-3">
-                  <TablePagination
-                    totalItems={listaOrdenada.length}
-                    itemsPerPage={ITEMS_POR_PAGINA_DESEMPATE}
-                    currentPage={paginaTabla}
-                    onPageChange={setPaginaTabla}
-                  />
-                </div>
-
-                <div className="border-t border-slate-200 px-4 py-3 text-[10px] text-slate-500">
-                  La columna # es el ranking definitivo de esta etapa (orden calculado en servidor). La entrada son las
-                  filas de su vista en Filtrado por puntaje total, cruzadas con Firestore por RUT. El recuadro de empates
-                  indica si aún hay grupos indistinguibles según el criterio aplicado. Las filas destacadas en verde
-                  corresponden al Top 150. La tabla muestra {ITEMS_POR_PAGINA_DESEMPATE} postulantes por página.
-                </div>
-              </>
+              <div className="p-4 space-y-3">
+                <ExcelRevisionUploadedTable
+                  data={tablaExcelDesempate}
+                  onClear={() => {}}
+                  hideQuitarArchivo
+                  hidePersistenciaBanner
+                  subtituloFiltro={
+                    <p>
+                      Misma vista que en <strong>Filtrado por puntaje total</strong> (columnas y valores del Excel
+                      guardado). El orden de las filas es el <strong>ranking de desempate</strong> del servidor. La
+                      búsqueda y la paginación (10 filas por página) son solo en el navegador.
+                    </p>
+                  }
+                />
+                <p className="text-[10px] text-slate-500 px-1 leading-relaxed">
+                  El recuadro de empates (arriba) resume coincidencias según el criterio aplicado. Exportar Excel y ZIP
+                  siguen usando los datos de postulantes en Firestore (hasta top 150 en Excel), no esta vista previa.
+                </p>
+              </div>
             )}
           </div>
         </div>

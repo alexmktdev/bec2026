@@ -206,9 +206,8 @@ export function postulantesParaRankingDesdeVistaPuntaje(
   }
 
   const out: Record<string, unknown>[] = []
-  let idx = 0
-  for (const row of vista.filasVista) {
-    idx++
+  for (let origIdx = 0; origIdx < vista.filasVista.length; origIdx++) {
+    const row = vista.filasVista[origIdx]
     const excelPd = excelRowToPostulanteData(row, vista.headers)
     const rutRaw = excelPd.rut || cell(row, findHeaderKey(vista.headers, 'rut'))
     const rutKey = rutClaveParaComparacion(rutRaw)
@@ -222,7 +221,7 @@ export function postulantesParaRankingDesdeVistaPuntaje(
     } else {
       merged = {
         ...excelPd,
-        id: `excel:${rutKey}:${idx}`,
+        id: `excel:${rutKey}:${origIdx + 1}`,
         estado: 'documentacion_validada',
         motivoRechazo: null,
         documentosSubidos: {},
@@ -235,6 +234,7 @@ export function postulantesParaRankingDesdeVistaPuntaje(
 
     const puntaje = calcularPuntajeTotal(merged as unknown as PostulanteData)
     merged.puntaje = puntaje
+    merged.__origIdx = origIdx
     out.push(merged)
   }
   return out

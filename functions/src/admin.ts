@@ -987,9 +987,35 @@ export const obtenerRankingDesempateAdmin = onCall(
 
       const empatesResumen = calcularEmpatesResumen(elegibles, criterioHasta)
 
-      const postulantesJson = ranking.map((p) => serializarParaCallable(p) as Record<string, unknown>)
+      const postulantesJson = ranking.map((p) => {
+        const { __origIdx: _omit, ...rest } = p as Record<string, unknown>
+        return serializarParaCallable(rest) as Record<string, unknown>
+      })
 
-      return { postulantes: postulantesJson, criterioHasta, empatesResumen, fuenteVistaPuntaje }
+      const tablaVistaDesempate =
+        !vista.sinExcel && vista.totalVista > 0 && ranking.length > 0
+          ? {
+              headers: vista.headers,
+              sheetName: vista.sheetName,
+              coincideConPlantillaExport: vista.coincideConPlantillaExport,
+              persistedAt: vista.persistedAt,
+              rows: ranking.map((p) => {
+                const i = (p as { __origIdx?: number }).__origIdx
+                if (typeof i !== 'number' || i < 0 || i >= vista.filasVista.length) {
+                  return {} as Record<string, string>
+                }
+                return vista.filasVista[i]
+              }),
+            }
+          : null
+
+      return {
+        postulantes: postulantesJson,
+        criterioHasta,
+        empatesResumen,
+        fuenteVistaPuntaje,
+        tablaVistaDesempate,
+      }
     } catch (e: unknown) {
       console.error('Error obtenerRankingDesempateAdmin:', e)
       if (e instanceof HttpsError) throw e
