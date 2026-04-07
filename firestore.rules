@@ -55,6 +55,11 @@ service cloud.firestore {
       allow read, write: if isRevisorOrAdmin();
     }
 
+    // Umbral global filtrado por puntaje total (solo Cloud Functions / Admin SDK)
+    match /config/filtro_puntaje_total_umbral {
+      allow read, write: if false;
+    }
+
     // Tokens de descarga ZIP (solo Cloud Functions / Admin SDK)
     match /descarga_docs_zip_tokens/{tokenId} {
       allow read, write: if false;

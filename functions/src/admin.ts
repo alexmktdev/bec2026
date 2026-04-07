@@ -346,7 +346,7 @@ function assertPuedeDescargarDocumentosPostulante(
   throw new HttpsError('permission-denied', 'No tiene permisos.')
 }
 
-async function assertRevisorOrAdmin(
+export async function assertRevisorOrAdmin(
   callerUid: string,
   db: admin.firestore.Firestore,
   tokenEmail?: string,
@@ -399,7 +399,7 @@ async function writeAuditLog(
 }
 
 // Helper function to check superadmin privileges
-async function verifySuperAdmin(uid: string, db: admin.firestore.Firestore): Promise<void> {
+export async function verifySuperAdmin(uid: string, db: admin.firestore.Firestore): Promise<void> {
   const userDoc = await db.collection('users').doc(uid).get()
   const role = (userDoc.data()?.role || '').toString().toLowerCase().trim()
   if (!userDoc.exists || role !== 'superadmin') {

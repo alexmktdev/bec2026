@@ -491,4 +491,5 @@ export const cambiarEstadoUsuario = onCall(
 )
 
 export * from './admin'
+export * from './filtroPuntajeTotalAdmin'
 export * from './mailProcessor'

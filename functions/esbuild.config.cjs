@@ -25,6 +25,7 @@ esbuild
       'firebase-functions/v2',
       'firebase-functions/v2/https',
       'archiver',
+      'exceljs',
     ],
   })
   .catch(() => process.exit(1))

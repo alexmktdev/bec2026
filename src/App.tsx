@@ -27,6 +27,9 @@ const Login = lazy(() => import('./components/admin/Login').then(module => ({ de
 const Dashboard = lazy(() => import('./components/admin/Dashboard').then(module => ({ default: module.Dashboard })))
 const FiltroInicial = lazy(() => import('./components/admin/FiltroInicial').then(module => ({ default: module.FiltroInicial })))
 const FiltroRevisionDoc = lazy(() => import('./components/admin/FiltroRevisionDoc').then(module => ({ default: module.FiltroRevisionDoc })))
+const FiltroPuntajeTotal = lazy(() =>
+  import('./components/admin/FiltroPuntajeTotal').then((m) => ({ default: m.FiltroPuntajeTotal })),
+)
 const FiltroDesempate = lazy(() => import('./components/admin/FiltroDesempate').then(module => ({ default: module.FiltroDesempate })))
 const PostulantesRechazadosEntrada = lazy(() =>
   import('./components/admin/PostulantesRechazadosEntrada').then((module) => ({
@@ -130,6 +133,7 @@ function App() {
             <Route index element={<Dashboard />} />
             <Route path="filtro-inicial" element={<FiltroInicial />} />
             <Route path="filtro-revision-doc" element={<FiltroRevisionDoc />} />
+            <Route path="filtro-puntaje-total" element={<FiltroPuntajeTotal />} />
             <Route path="filtro-desempate" element={<FiltroDesempate />} />
             <Route path="postulantes-rechazados-entrada" element={<PostulantesRechazadosEntrada />} />
             <Route path="usuarios" element={<UsersManagement />} />
