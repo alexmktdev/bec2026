@@ -17,7 +17,7 @@ import {
   findRutColumnKey,
   ordenarFilasExcelSegunPostulantes,
 } from '../../utils/excelRevisionRowMatch'
-import { normalizeRut } from '../../postulacion/shared/rut'
+import { rutClaveParaComparacion } from '../../postulacion/shared/rut'
 
 function puntajeLabel(p: number) {
   return `>=${p} puntos`
@@ -135,8 +135,8 @@ export function FiltroPuntajeTotal() {
       if (!claveRutExcel) return
       const raw = (row[claveRutExcel] ?? '').trim()
       if (!raw) return
-      const k = normalizeRut(raw)
-      const p = postulantes.find((pr) => normalizeRut(pr.rut) === k)
+      const k = rutClaveParaComparacion(raw)
+      const p = postulantes.find((pr) => rutClaveParaComparacion(pr.rut) === k)
       if (p) setSelected(p)
     },
     [claveRutExcel, postulantes],
@@ -516,9 +516,22 @@ export function FiltroPuntajeTotal() {
                 filasExcelSoloEstadoValidado.length > 0 &&
                 !ordenServidorAplicado ? (
                   <div className="rounded-lg border border-amber-300 bg-amber-50 px-3 py-2 text-xs text-amber-950">
-                    No se pudo ordenar por el listado del servidor (RUT sin coincidencia o lista vacía). Se muestran las filas
-                    validadas en el <strong>orden del archivo</strong>. Revise formatos de RUT o pulse{' '}
-                    <strong>Actualizar postulantes</strong>.
+                    {tablaLista.length === 0 ? (
+                      <>
+                        En el servidor <strong>no hay postulantes</strong> en esta etapa (documentación validada
+                        {puntajeAplicado != null ? ` y umbral de puntaje ≥ ${puntajeAplicado}` : ''}), así que no se puede
+                        ordenar por puntaje. Las filas del Excel siguen en <strong>orden de archivo</strong>. Pulse{' '}
+                        <strong>Actualizar postulantes</strong> o revise el filtro de puntaje.
+                      </>
+                    ) : (
+                      <>
+                        Los RUT del Excel <strong>no coinciden</strong> con los de la lista del servidor (formato distinto,
+                        columna RUT equivocada o datos desactualizados). Se muestran las filas validadas en{' '}
+                        <strong>orden de archivo</strong>. Compruebe que la columna RUT tenga el mismo criterio que el panel
+                        (p. ej. con guión: <span className="font-mono">12.345.678-9</span>) y pulse{' '}
+                        <strong>Actualizar postulantes</strong>.
+                      </>
+                    )}
                   </div>
                 ) : null}
                 <ExcelRevisionUploadedTable

@@ -6,6 +6,25 @@ export function normalizeRut(rut: string): string {
   return rut.replace(/\./g, '').replace(/\s/g, '').toLowerCase()
 }
 
+/**
+ * Clave estable para cruzar RUT entre Excel y servidor.
+ * Excel a veces entrega número sin guión: "173790953" → "17379095-3".
+ */
+export function rutClaveParaComparacion(rut: string): string {
+  const n = normalizeRut(rut)
+  if (!n) return n
+  if (n.includes('-')) {
+    const [body, dv] = n.split('-')
+    if (body && dv && /^\d{7,8}$/.test(body) && /^[\dk]$/.test(dv)) {
+      return `${body}-${dv}`
+    }
+    return n
+  }
+  const m = n.match(/^(\d{7,8})([\dk])$/)
+  if (m) return `${m[1]}-${m[2]}`
+  return n
+}
+
 /** Formato mínimo: cuerpo numérico + guión + dígito verificador (k permitido). */
 export function rutTieneFormatoMinimo(rut: string): boolean {
   const n = normalizeRut(rut)

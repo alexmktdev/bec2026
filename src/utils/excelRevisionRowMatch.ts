@@ -1,6 +1,6 @@
 import type { ExcelRevisionRow } from '../services/excelRevisionImport'
 import type { PostulanteFirestore } from '../types/postulante'
-import { normalizeRut } from '../postulacion/shared/rut'
+import { rutClaveParaComparacion } from '../postulacion/shared/rut'
 
 /** Quita BOM, espacios raros y normaliza mayúsculas para comparar encabezados de Excel. */
 function normEncabezado(h: string): string {
@@ -104,12 +104,12 @@ export function ordenarFilasExcelSegunPostulantes(
   for (const row of rows) {
     const raw = (row[rutKey] ?? '').trim()
     if (!raw) continue
-    const k = normalizeRut(raw)
+    const k = rutClaveParaComparacion(raw)
     if (!byRut.has(k)) byRut.set(k, row)
   }
   const out: ExcelRevisionRow[] = []
   for (const p of ordenPostulantes) {
-    const row = byRut.get(normalizeRut(p.rut))
+    const row = byRut.get(rutClaveParaComparacion(p.rut))
     if (row) out.push(row)
   }
   return out
