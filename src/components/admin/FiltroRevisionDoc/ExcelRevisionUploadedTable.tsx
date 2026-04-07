@@ -1,4 +1,4 @@
-import { useMemo, useRef, useState } from 'react'
+import { useMemo, useRef, useState, type ReactNode } from 'react'
 import type { ExcelRevisionParseResult, ExcelRevisionRow } from '../../../services/excelRevisionImport'
 import { formatFechaRegistro24h, intentarFormatearFechaRegistroDesdeTexto } from '../../../utils/inputFormatters'
 import { TablePagination } from '../TablePagination'
@@ -19,6 +19,18 @@ function filaCoincideBusqueda(row: ExcelRevisionRow, headers: string[], q: strin
 interface Props {
   data: ExcelRevisionParseResult
   onClear: () => void
+  /** Si se indica, la tabla parte de este subconjunto (mismos encabezados que el archivo). */
+  rowsSubset?: ExcelRevisionRow[]
+  /** Texto o bloque bajo el título de la vista previa (p. ej. contexto del filtro por puntaje). */
+  subtituloFiltro?: ReactNode
+  /** Oculta el botón que borra el archivo en Firestore (vista de solo lectura desde otra pestaña). */
+  hideQuitarArchivo?: boolean
+  /** No muestra el aviso verde de última persistencia en Firestore. */
+  hidePersistenciaBanner?: boolean
+  /** Clic en una fila de datos (p. ej. abrir ficha del postulante en otra pantalla). */
+  onRowActivate?: (row: ExcelRevisionRow) => void
+  /** Mensaje cuando no hay filas base y la búsqueda está vacía (p. ej. subconjunto filtrado vacío). */
+  mensajeVacioSinBusqueda?: string
 }
 
 function valorCeldaMostrar(header: string, raw: string): string {
@@ -27,16 +39,27 @@ function valorCeldaMostrar(header: string, raw: string): string {
   return raw
 }
 
-export function ExcelRevisionUploadedTable({ data, onClear }: Props) {
+export function ExcelRevisionUploadedTable({
+  data,
+  onClear,
+  rowsSubset,
+  subtituloFiltro,
+  hideQuitarArchivo = false,
+  hidePersistenciaBanner = false,
+  onRowActivate,
+  mensajeVacioSinBusqueda,
+}: Props) {
   const { headers, rows, sheetName, coincideConPlantillaExport, persistedAt } = data
   const [busqueda, setBusqueda] = useState('')
   const [pagina, setPagina] = useState(1)
   const scrollRef = useRef<HTMLDivElement | null>(null)
 
+  const sourceRows = rowsSubset ?? rows
+
   const filtrados = useMemo(() => {
-    if (!busqueda.trim()) return rows
-    return rows.filter((r) => filaCoincideBusqueda(r, headers, busqueda))
-  }, [rows, headers, busqueda])
+    if (!busqueda.trim()) return sourceRows
+    return sourceRows.filter((r) => filaCoincideBusqueda(r, headers, busqueda))
+  }, [sourceRows, headers, busqueda])
 
   const paginaItems = useMemo(() => {
     const start = (pagina - 1) * ITEMS_PER_PAGE
@@ -45,9 +68,12 @@ export function ExcelRevisionUploadedTable({ data, onClear }: Props) {
 
   const startIndex = (pagina - 1) * ITEMS_PER_PAGE
 
+  const totalArchivo = rows.length
+  const baseMostradas = sourceRows.length
+
   return (
     <div className="space-y-4">
-      {persistedAt && (
+      {persistedAt && !hidePersistenciaBanner && (
         <div className="rounded-lg border border-emerald-200 bg-emerald-50/90 px-3 py-2 text-xs text-emerald-900">
           <strong>Guardado en Firestore</strong> (proyecto Firebase): última actualización{' '}
           <span className="font-mono font-semibold">{formatFechaRegistro24h(persistedAt)}</span>. Visible al iniciar sesión
@@ -61,7 +87,17 @@ export function ExcelRevisionUploadedTable({ data, onClear }: Props) {
             <span className="font-mono text-blue-800">({sheetName})</span>
           </p>
           <p className="text-xs text-slate-500 mt-0.5">
-            {rows.length} fila{rows.length !== 1 ? 's' : ''} · {headers.length} columna
+            {rowsSubset != null ? (
+              <>
+                Mostrando <strong className="text-slate-700">{baseMostradas}</strong> de {totalArchivo} fila
+                {totalArchivo !== 1 ? 's' : ''} del archivo (alineadas al filtro de esta pestaña). ·{' '}
+              </>
+            ) : (
+              <>
+                {totalArchivo} fila{totalArchivo !== 1 ? 's' : ''} ·{' '}
+              </>
+            )}
+            {headers.length} columna
             {headers.length !== 1 ? 's' : ''}
             {!coincideConPlantillaExport && (
               <span className="text-amber-700 font-semibold">
@@ -70,6 +106,7 @@ export function ExcelRevisionUploadedTable({ data, onClear }: Props) {
               </span>
             )}
           </p>
+          {subtituloFiltro ? <div className="mt-2 text-xs text-slate-600 leading-relaxed">{subtituloFiltro}</div> : null}
         </div>
         <div className="flex flex-wrap gap-2 items-center">
           <input
@@ -84,17 +121,19 @@ export function ExcelRevisionUploadedTable({ data, onClear }: Props) {
             }}
             className="rounded-lg border border-slate-300 px-3 py-1.5 text-sm min-w-[200px] focus:ring-1 focus:ring-blue-500"
           />
-          <button
-            type="button"
-            onClick={() => {
-              onClear()
-              setBusqueda('')
-              setPagina(1)
-            }}
-            className="rounded-lg border border-slate-300 bg-white px-3 py-1.5 text-sm font-semibold text-slate-700 hover:bg-slate-50"
-          >
-            Quitar archivo
-          </button>
+          {!hideQuitarArchivo && (
+            <button
+              type="button"
+              onClick={() => {
+                onClear()
+                setBusqueda('')
+                setPagina(1)
+              }}
+              className="rounded-lg border border-slate-300 bg-white px-3 py-1.5 text-sm font-semibold text-slate-700 hover:bg-slate-50"
+            >
+              Quitar archivo
+            </button>
+          )}
         </div>
       </div>
 
@@ -120,7 +159,9 @@ export function ExcelRevisionUploadedTable({ data, onClear }: Props) {
                     colSpan={headers.length + 1}
                     className="py-12 text-center text-slate-400 font-medium text-sm"
                   >
-                    Ninguna fila coincide con la búsqueda.
+                    {sourceRows.length === 0 && !busqueda.trim()
+                      ? (mensajeVacioSinBusqueda ?? 'Ningún dato para mostrar.')
+                      : 'Ninguna fila coincide con la búsqueda.'}
                   </td>
                 </tr>
               ) : (
@@ -128,8 +169,9 @@ export function ExcelRevisionUploadedTable({ data, onClear }: Props) {
                   const n = startIndex + idx + 1
                   return (
                     <tr
-                      key={`excel-revision-row-${n}`}
-                      className="divide-x divide-slate-50 hover:bg-slate-50/90 transition-colors"
+                      key={`excel-revision-row-${startIndex}-${idx}`}
+                      className={`divide-x divide-slate-50 hover:bg-slate-50/90 transition-colors ${onRowActivate ? 'cursor-pointer' : ''}`}
+                      onClick={onRowActivate ? () => onRowActivate(row) : undefined}
                     >
                       <td className="sticky left-0 z-10 bg-slate-50/95 px-2 py-1.5 text-center text-xs font-bold text-slate-600 tabular-nums shadow-[1px_0_0_0_rgba(241,245,249,1)] border-b border-slate-100">
                         {n}

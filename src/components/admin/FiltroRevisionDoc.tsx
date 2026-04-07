@@ -19,6 +19,22 @@ export function FiltroRevisionDoc() {
   const [leyendo, setLeyendo] = useState(false)
   const [restaurando, setRestaurando] = useState(true)
   const [advertenciaPersistencia, setAdvertenciaPersistencia] = useState<string | null>(null)
+  const [recargandoExcel, setRecargandoExcel] = useState(false)
+
+  const recargarExcelDesdeFirestore = useCallback(async () => {
+    if (recargandoExcel || leyendo) return
+    setRecargandoExcel(true)
+    setParseError(null)
+    setAdvertenciaPersistencia(null)
+    try {
+      const snap = await loadExcelRevisionImportFirestore()
+      setParsed(snap)
+    } catch (e) {
+      setParseError(e instanceof Error ? e.message : 'No se pudo recargar la tabla desde Firestore.')
+    } finally {
+      setRecargandoExcel(false)
+    }
+  }, [recargandoExcel, leyendo])
 
   useEffect(() => {
     let cancel = false
@@ -117,7 +133,7 @@ export function FiltroRevisionDoc() {
             <button
               type="button"
               onClick={abrirSelector}
-              disabled={leyendo}
+              disabled={leyendo || recargandoExcel}
               className="inline-flex items-center gap-2 rounded-lg bg-blue-800 px-4 py-2.5 text-sm font-semibold text-white shadow-sm hover:bg-blue-900 transition-colors disabled:opacity-60"
             >
               {leyendo ? (
@@ -134,6 +150,27 @@ export function FiltroRevisionDoc() {
                 </>
               )}
             </button>
+            <button
+              type="button"
+              onClick={() => void recargarExcelDesdeFirestore()}
+              disabled={leyendo || recargandoExcel || restaurando}
+              title="Obtiene de nuevo la copia guardada en Firestore (por si subió un archivo en otra pestaña o en otro navegador con el mismo usuario)."
+              className="inline-flex items-center gap-2 rounded-lg border border-blue-300 bg-white px-4 py-2.5 text-sm font-semibold text-blue-900 shadow-sm hover:bg-blue-50 transition-colors disabled:opacity-60"
+            >
+              {recargandoExcel ? (
+                <>
+                  <span className="h-4 w-4 animate-spin rounded-full border-2 border-blue-800 border-t-transparent" />
+                  Recargando…
+                </>
+              ) : (
+                <>
+                  <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                    <path strokeLinecap="round" strokeLinejoin="round" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
+                  </svg>
+                  Recargar Excel desde Firestore
+                </>
+              )}
+            </button>
           </div>
           <input
             ref={inputRef}
@@ -144,9 +181,12 @@ export function FiltroRevisionDoc() {
             onChange={onArchivo}
           />
           <p className="text-xs text-blue-900/80 leading-relaxed border-t border-blue-200/80 pt-4">
-            El archivo se procesa en el navegador y luego los datos se guardan en <strong>Firestore</strong> bajo su
-            usuario (revisor/admin/superadmin). Cada cuenta tiene su propia copia; no sustituye los postulantes del
-            panel. Límite de guardado: 5&nbsp;000 filas; el .xlsx puede pesar hasta 32&nbsp;MB al subirlo.
+            El archivo se procesa en el navegador y luego los datos se guardan en <strong>Firestore</strong> asociados al
+            usuario con el que inició sesión en Firebase (mismo correo / misma cuenta de autenticación).{' '}
+            <strong>Otras cuentas</strong> son otros usuarios que entran con otro correo o credencial: cada uno tiene su
+            propia copia del Excel subido; un revisor no ve el archivo que guardó otro. Esto no reemplaza los postulantes
+            del panel (son datos aparte). Límite de guardado: 5&nbsp;000 filas; el .xlsx puede pesar hasta 32&nbsp;MB al
+            subirlo.
           </p>
         </section>
 

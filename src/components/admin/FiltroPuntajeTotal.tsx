@@ -1,14 +1,18 @@
-import { useEffect, useMemo, useState } from 'react'
+import { useCallback, useEffect, useMemo, useState } from 'react'
+import { Link } from 'react-router-dom'
 import { useAdminFilter } from '../../contexts/AdminFilterContext'
-import { eliminarPostulante } from '../../services/postulacionService'
 import type { PostulanteFirestore } from '../../types/postulante'
-import { PostulantesTable } from './PostulantesTable'
+import type { ExcelRevisionRow } from '../../services/excelRevisionImport'
+import { loadExcelRevisionImportFirestore } from '../../services/excelRevisionFirestoreService'
 import { PostulanteDetail } from './PostulanteDetail'
 import { AdminLayout } from './AdminLayout'
 import { exportarExcel } from '../../services/excelExport'
 import { descargarTodosDocumentos } from '../../services/zipDownload'
 import { useAuth } from '../../hooks/useAuth'
 import { ZipDownloadBriefNotice } from './ZipDownloadBriefNotice'
+import { ExcelRevisionUploadedTable } from './FiltroRevisionDoc/ExcelRevisionUploadedTable'
+import { findColumnKeyIgnoreCase, ordenarFilasExcelSegunPostulantes } from '../../utils/excelRevisionRowMatch'
+import { normalizeRut } from '../../postulacion/shared/rut'
 
 function puntajeLabel(p: number) {
   return `>=${p} puntos`
@@ -31,8 +35,6 @@ export function FiltroPuntajeTotal() {
     setFiltroPuntaje,
     clearFiltro,
     refrescarPostulantes,
-    actualizarPostulanteLocal,
-    eliminarPostulanteLocal,
   } = useAdminFilter()
   const [selected, setSelected] = useState<PostulanteFirestore | null>(null)
   const [exportando, setExportando] = useState<string | null>(null)
@@ -46,16 +48,60 @@ export function FiltroPuntajeTotal() {
   const [filtrandoPuntaje, setFiltrandoPuntaje] = useState(false)
   const [mostrarModalOk, setMostrarModalOk] = useState(false)
 
-  async function handleEliminar(id: string) {
-    try {
-      await eliminarPostulante(id)
-      eliminarPostulanteLocal(id)
-      if (selected?.id === id) setSelected(null)
-    } catch (err) {
-      console.error('Error eliminando:', err)
-      alert('Error al eliminar el postulante.')
+  const [excelRevision, setExcelRevision] = useState<Awaited<ReturnType<typeof loadExcelRevisionImportFirestore>>>(null)
+  const [restaurandoExcel, setRestaurandoExcel] = useState(true)
+  const [recargandoExcel, setRecargandoExcel] = useState(false)
+  const [errorExcel, setErrorExcel] = useState<string | null>(null)
+
+  useEffect(() => {
+    let cancel = false
+    ;(async () => {
+      try {
+        const snap = await loadExcelRevisionImportFirestore()
+        if (!cancel) setExcelRevision(snap)
+      } catch (e) {
+        if (!cancel) {
+          setErrorExcel(e instanceof Error ? e.message : 'No se pudo cargar el Excel guardado.')
+        }
+      } finally {
+        if (!cancel) setRestaurandoExcel(false)
+      }
+    })()
+    return () => {
+      cancel = true
     }
-  }
+  }, [])
+
+  const recargarExcelDesdeFirestore = useCallback(async () => {
+    if (recargandoExcel) return
+    setRecargandoExcel(true)
+    setErrorExcel(null)
+    try {
+      const snap = await loadExcelRevisionImportFirestore()
+      setExcelRevision(snap)
+    } catch (e) {
+      setErrorExcel(e instanceof Error ? e.message : 'No se pudo recargar el Excel guardado.')
+    } finally {
+      setRecargandoExcel(false)
+    }
+  }, [recargandoExcel])
+
+  const claveRutExcel = useMemo(
+    () => (excelRevision ? findColumnKeyIgnoreCase(excelRevision.headers, 'RUT') : null),
+    [excelRevision],
+  )
+
+  const activarFilaExcel = useCallback(
+    (row: ExcelRevisionRow) => {
+      if (!claveRutExcel) return
+      const raw = (row[claveRutExcel] ?? '').trim()
+      if (!raw) return
+      const k = normalizeRut(raw)
+      const p = postulantes.find((pr) => normalizeRut(pr.rut) === k)
+      if (p) setSelected(p)
+    },
+    [claveRutExcel, postulantes],
+  )
 
   /** Solo quienes ya pasaron revisión de documentos (estado en servidor). */
   const postulantesElegiblesPuntaje = useMemo(
@@ -69,6 +115,11 @@ export function FiltroPuntajeTotal() {
       puntajeAplicado == null ? postulantesElegiblesPuntaje : postulantesFiltrados
     return ordenarPorPuntajeTotalDesc(base)
   }, [puntajeAplicado, postulantesElegiblesPuntaje, postulantesFiltrados])
+
+  const filasExcelFiltradas = useMemo(() => {
+    if (!excelRevision || !claveRutExcel) return []
+    return ordenarFilasExcelSegunPostulantes(excelRevision.rows, claveRutExcel, tablaLista)
+  }, [excelRevision, claveRutExcel, tablaLista])
 
   async function handleFiltrarPuntaje() {
     if (!canManageFiltroPuntaje) return
@@ -121,9 +172,11 @@ export function FiltroPuntajeTotal() {
           <div className="rounded-xl border border-slate-200 bg-white p-4">
             <div className="mb-3 rounded-lg border border-blue-200 bg-blue-50/80 p-3 text-xs text-blue-900 leading-relaxed">
               <strong>Orden del proceso:</strong> primero se revisa la documentación de todos los postulantes ingresados;
-              solo quienes queden con estado <strong>documentación validada</strong> entran aquí. La tabla se muestra ordenada
-              por <strong>puntaje total de mayor a menor</strong>. Al aplicar el filtro, el servidor registra el umbral y la
-              lista resultante alimenta la etapa de <strong>filtrado por desempate</strong>.
+              solo quienes queden con estado <strong>documentación validada</strong> entran aquí. La tabla principal es la
+              misma planilla que sube en <strong>Revisión de documentación</strong> (mismo formato y columnas), mostrando
+              solo las filas de esta etapa y ordenadas por <strong>puntaje total de mayor a menor</strong>. Al aplicar el
+              filtro, el servidor registra el umbral y la lista resultante alimenta la etapa de{' '}
+              <strong>filtrado por desempate</strong>.
             </div>
             <h2 className="text-sm font-bold uppercase text-slate-700 mb-2">
               Cómo se calcula el puntaje total
@@ -229,7 +282,20 @@ export function FiltroPuntajeTotal() {
               <svg xmlns="http://www.w3.org/2000/svg" className={`h-4 w-4 ${loading ? 'animate-spin' : ''}`} fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
                 <path strokeLinecap="round" strokeLinejoin="round" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
               </svg>
-              Actualizar
+              Actualizar postulantes
+            </button>
+
+            <button
+              type="button"
+              onClick={() => void recargarExcelDesdeFirestore()}
+              disabled={restaurandoExcel || recargandoExcel}
+              title="Vuelve a leer desde Firestore el Excel de Revisión de documentación (útil tras subir un archivo nuevo o editarlo en otro equipo con la misma sesión)."
+              className="flex items-center gap-1.5 rounded-lg border border-slate-300 bg-white px-3 py-2 text-xs font-semibold text-slate-700 shadow-sm hover:bg-slate-50 disabled:opacity-50"
+            >
+              <svg xmlns="http://www.w3.org/2000/svg" className={`h-4 w-4 ${recargandoExcel ? 'animate-spin' : ''}`} fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                <path strokeLinecap="round" strokeLinejoin="round" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
+              </svg>
+              {recargandoExcel ? 'Recargando Excel…' : 'Recargar Excel'}
             </button>
 
             {canManageFiltroPuntaje && puntajeAplicado != null && (
@@ -279,7 +345,7 @@ export function FiltroPuntajeTotal() {
             </div>
           </div>
 
-          {/* Tabla */}
+          {/* Tabla (mismo Excel que en Revisión de documentación, filtrado por esta etapa) */}
           <div className="space-y-4">
             {errorPostulantes ? (
               <div className="rounded-xl border border-red-200 bg-red-50 p-5 flex items-start gap-3">
@@ -301,12 +367,64 @@ export function FiltroPuntajeTotal() {
               <div className="flex items-center justify-center py-20">
                 <div className="h-10 w-10 animate-spin rounded-full border-4 border-blue-200 border-t-blue-700" />
               </div>
+            ) : errorExcel ? (
+              <div className="rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-800" role="alert">
+                {errorExcel}
+              </div>
+            ) : restaurandoExcel ? (
+              <div className="flex items-center justify-center gap-2 py-12 text-sm text-slate-500">
+                <span className="h-4 w-4 animate-spin rounded-full border-2 border-blue-200 border-t-blue-700" />
+                Cargando tabla del Excel revisado…
+              </div>
+            ) : !excelRevision ? (
+              <div className="rounded-xl border border-amber-200 bg-amber-50/90 p-6 text-sm text-amber-950 space-y-3">
+                <p className="font-semibold text-amber-900">Aún no hay un Excel revisado cargado</p>
+                <p className="text-amber-900/90 leading-relaxed">
+                  Esta pestaña muestra la misma planilla que sube en <strong>Revisión de documentación</strong>, pero solo las
+                  filas que corresponden a postulantes con documentación validada y al filtro de puntaje vigente (orden por
+                  puntaje total de mayor a menor). Suba primero el archivo .xlsx en esa pestaña.
+                </p>
+                <Link
+                  to="/admin/filtro-revision-doc"
+                  className="inline-flex items-center gap-2 rounded-lg bg-blue-800 px-4 py-2 text-sm font-semibold text-white shadow-sm hover:bg-blue-900"
+                >
+                  Ir a Revisión de documentación — Subir Excel revisado
+                </Link>
+              </div>
+            ) : !claveRutExcel ? (
+              <div className="rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-800">
+                El archivo guardado no tiene una columna <strong>RUT</strong> reconocible; no se puede alinear con el listado
+                del sistema. Vuelva a exportar desde el panel y suba el Excel en revisión de documentación.
+              </div>
             ) : (
-              <PostulantesTable
-                postulantes={tablaLista}
-                onSelectPostulante={setSelected}
-                onEliminar={handleEliminar}
-                onActualizar={actualizarPostulanteLocal}
+              <ExcelRevisionUploadedTable
+                data={excelRevision}
+                onClear={() => {}}
+                rowsSubset={filasExcelFiltradas}
+                hideQuitarArchivo
+                hidePersistenciaBanner
+                onRowActivate={activarFilaExcel}
+                subtituloFiltro={
+                  <p>
+                    Mismas columnas y estilo que en <strong>Revisión de documentación</strong>. Solo aparecen RUT que existen
+                    en el archivo y en esta etapa
+                    {puntajeAplicado != null ? (
+                      <>
+                        {' '}
+                        con puntaje total <strong>≥ {puntajeAplicado}</strong>
+                      </>
+                    ) : (
+                      <> (todas las filas con documentación validada)</>
+                    )}
+                    . Clic en una fila abre la ficha si el postulante está en el sistema. Exportar Excel / ZIP de arriba
+                    sigue usando los datos del servidor ({tablaLista.length} postulantes en esta vista).
+                  </p>
+                }
+                mensajeVacioSinBusqueda={
+                  tablaLista.length === 0
+                    ? 'No hay postulantes con documentación validada en esta etapa, o el umbral de puntaje dejó la lista vacía.'
+                    : 'Ningún RUT del Excel coincide con el listado filtrado. Compruebe que el archivo corresponde al mismo proceso y que los RUT coinciden con el panel.'
+                }
               />
             )}
           </div>
