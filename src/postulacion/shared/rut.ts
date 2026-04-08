@@ -3,6 +3,7 @@
  * "17.379.095-3" -> "17379095-3"
  */
 export function normalizeRut(rut: string): string {
+  if (!rut) return ''
   return rut.replace(/\./g, '').replace(/\s/g, '').toLowerCase()
 }
 

@@ -118,8 +118,9 @@ export function AntecedentesPostulante() {
         <div className="grid gap-6 md:grid-cols-2">
           {/* Nombres */}
           <div className="space-y-1.5">
-            <label className="text-sm font-bold text-slate-700">Nombres</label>
+            <label htmlFor="nombres" className="text-sm font-bold text-slate-700">Nombres</label>
             <input
+              id="nombres"
               {...register('nombres', {
                 onChange: (e) => {
                   const val = soloTexto(e.target.value)
@@ -134,8 +135,9 @@ export function AntecedentesPostulante() {
 
           {/* Otros campos siguiendo el mismo patrón... */}
           <div className="space-y-1.5">
-            <label className="text-sm font-bold text-slate-700">Apellido paterno</label>
+            <label htmlFor="apellidoPaterno" className="text-sm font-bold text-slate-700">Apellido paterno</label>
             <input
+              id="apellidoPaterno"
               {...register('apellidoPaterno', {
                 onChange: (e) => setValue('apellidoPaterno', capitalizarApellidoManteniendoEspacios(soloTexto(e.target.value)))
               })}
@@ -145,8 +147,9 @@ export function AntecedentesPostulante() {
           </div>
 
           <div className="space-y-1.5">
-            <label className="text-sm font-bold text-slate-700">Apellido materno</label>
+            <label htmlFor="apellidoMaterno" className="text-sm font-bold text-slate-700">Apellido materno</label>
             <input
+              id="apellidoMaterno"
               {...register('apellidoMaterno', {
                 onChange: (e) => setValue('apellidoMaterno', capitalizarApellidoManteniendoEspacios(soloTexto(e.target.value)))
               })}
@@ -156,8 +159,9 @@ export function AntecedentesPostulante() {
           </div>
 
           <div className="space-y-1.5">
-            <label className="text-sm font-bold text-slate-700">RUT</label>
+            <label htmlFor="rut" className="text-sm font-bold text-slate-700">RUT</label>
             <input
+              id="rut"
               {...register('rut', {
                 onChange: (e) => setValue('rut', formatRut(e.target.value))
               })}
@@ -168,8 +172,9 @@ export function AntecedentesPostulante() {
           </div>
 
           <div className="space-y-1.5">
-            <label className="text-sm font-bold text-slate-700">Fecha de nacimiento</label>
+            <label htmlFor="fechaNacimiento" className="text-sm font-bold text-slate-700">Fecha de nacimiento</label>
             <input
+              id="fechaNacimiento"
               type="date"
               {...register('fechaNacimiento')}
               className={`block w-full rounded-lg border px-3 py-2.5 text-sm transition-all focus:ring-2 focus:ring-blue-100 outline-none ${errors.fechaNacimiento ? 'border-red-400' : 'border-slate-300 focus:border-blue-500'}`}
@@ -178,8 +183,9 @@ export function AntecedentesPostulante() {
           </div>
 
           <div className="space-y-1.5">
-            <label className="text-sm font-bold text-slate-600">Edad calculada</label>
+            <label htmlFor="edad" className="text-sm font-bold text-slate-600">Edad calculada</label>
             <input
+              id="edad"
               {...register('edad')}
               readOnly
               className="block w-full rounded-lg border border-slate-200 bg-slate-50 px-3 py-2.5 text-sm text-slate-500 font-semibold focus:outline-none"
@@ -188,8 +194,9 @@ export function AntecedentesPostulante() {
           </div>
 
           <div className="space-y-1.5">
-            <label className="text-sm font-bold text-slate-700">Sexo</label>
+            <label htmlFor="sexo" className="text-sm font-bold text-slate-700">Sexo</label>
             <select
+              id="sexo"
               {...register('sexo')}
               className={`block w-full rounded-lg border px-3 py-2.5 text-sm transition-all focus:ring-2 focus:ring-blue-100 outline-none bg-white ${errors.sexo ? 'border-red-400' : 'border-slate-300 focus:border-blue-500'}`}
             >
@@ -202,8 +209,9 @@ export function AntecedentesPostulante() {
           </div>
 
           <div className="space-y-1.5">
-            <label className="text-sm font-bold text-slate-700">Estado civil</label>
+            <label htmlFor="estadoCivil" className="text-sm font-bold text-slate-700">Estado civil</label>
             <select
+              id="estadoCivil"
               {...register('estadoCivil')}
               className={`block w-full rounded-lg border px-3 py-2.5 text-sm transition-all focus:ring-2 focus:ring-blue-100 outline-none bg-white ${errors.estadoCivil ? 'border-red-400' : 'border-slate-300 focus:border-blue-500'}`}
             >
@@ -217,8 +225,9 @@ export function AntecedentesPostulante() {
           </div>
 
           <div className="space-y-1.5">
-            <label className="text-sm font-bold text-slate-700">Teléfono móvil</label>
+            <label htmlFor="telefono" className="text-sm font-bold text-slate-700">Teléfono móvil</label>
             <input
+              id="telefono"
               {...register('telefono', {
                 onChange: (e) => {
                   const val = e.target.value.replace(/\D/g, '')
@@ -233,8 +242,9 @@ export function AntecedentesPostulante() {
           </div>
 
           <div className="space-y-1.5">
-            <label className="text-sm font-bold text-slate-700">Correo electrónico</label>
+            <label htmlFor="email" className="text-sm font-bold text-slate-700">Correo electrónico</label>
             <input
+              id="email"
               type="text"
               {...register('email', {
                 onChange: (e) => {
@@ -249,8 +259,9 @@ export function AntecedentesPostulante() {
           </div>
 
           <div className="space-y-1.5 md:col-span-2">
-            <label className="text-sm font-bold text-slate-700">Domicilio familiar</label>
+            <label htmlFor="domicilioFamiliar" className="text-sm font-bold text-slate-700">Domicilio familiar</label>
             <input
+              id="domicilioFamiliar"
               {...register('domicilioFamiliar', {
                 onChange: (e) => {
                   const val = soloTextoDomicilio(e.target.value)
