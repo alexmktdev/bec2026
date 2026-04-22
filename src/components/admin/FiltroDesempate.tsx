@@ -44,17 +44,17 @@ const EMPATES_VACIO: EmpatesResumenDesempate = {
 function descripcionClaveEmpate(criterio: CriterioDesempate | 'none'): string {
   switch (criterio) {
     case 'none':
-      return 'mismo puntaje total'
+      return 'mismo valor en columna «Puntaje Total» del Excel'
     case 'nem':
-      return 'mismo puntaje total y mismo puntaje NEM'
+      return 'mismos valores en columnas «Puntaje Total» y «Puntaje NEM» del Excel'
     case 'rsh':
-      return 'mismo puntaje total, NEM y RSH'
+      return 'mismos valores en «Puntaje Total», «Puntaje NEM» y «Puntaje RSH» del Excel'
     case 'enfermedad':
-      return 'mismo puntaje total, NEM, RSH y enfermedad'
+      return 'mismos Total/NEM/RSH en Excel y mismo puntaje enfermedad calculado'
     case 'hermanos':
-      return 'mismo puntaje total, NEM, RSH, enfermedad y hermanos/hijos'
+      return 'mismos criterios anteriores y mismo puntaje hermanos/hijos calculado'
     case 'fecha':
-      return 'mismo puntaje total, NEM, RSH, enfermedad, hermanos/hijos y misma fecha/hora de postulación'
+      return 'mismos criterios anteriores y misma fecha/hora de postulación'
     default:
       return 'los criterios aplicados'
   }
@@ -191,12 +191,12 @@ export function FiltroDesempate() {
                 Estado «Validado» y, si el superadmin definió umbral global, solo quienes cumplen el puntaje mínimo. Los
                 datos se leen del Excel guardado en Firestore con <strong>su usuario</strong> y se cruzan con los
                 postulantes del sistema por <strong>RUT</strong>. El orden principal usa solo las columnas del Excel con
-                encabezados exactos <strong>Puntaje Total</strong> y (a partir del 2.º filtro){' '}
-                <strong>Puntaje NEM</strong>, ambas en descendente (mayor primero). Los niveles siguientes (RSH, etc.)
-                siguen usando los puntajes calculados en servidor:{' '}
+                encabezados exactos <strong>Puntaje Total</strong>, luego <strong>Puntaje NEM</strong> (2.º filtro) y{' '}
+                <strong>Puntaje RSH</strong> (3.er filtro), todos en descendente (mayor primero). Desde el 4.º nivel se
+                usan puntajes calculados en servidor:{' '}
                 <strong>
-                  Puntaje Total (Excel) ↓ → Puntaje NEM (Excel) ↓ → puntaje RSH ↓ → enfermedad ↓ → hermanos/hijos ↓ →
-                  fecha/hora ↓
+                  Puntaje Total (Excel) ↓ → Puntaje NEM (Excel) ↓ → Puntaje RSH (Excel) ↓ → enfermedad ↓ →
+                  hermanos/hijos ↓ → fecha/hora ↓
                 </strong>
                 .
               </p>
@@ -277,7 +277,7 @@ export function FiltroDesempate() {
                   <p className="mt-1 text-xs text-slate-600">
                     {criterioSeleccionado === 'none'
                       ? 'Solo se ordena por la columna «Puntaje Total» del Excel (descendente).'
-                      : 'Cada vez que subes un nivel en el menú, se afinan los empates (2.º nivel: solo columna «Puntaje NEM» del Excel; niveles siguientes: criterios del servidor).'}
+                      : 'Cada nivel añade un desempate: 2.º «Puntaje NEM» y 3.er «Puntaje RSH» en el Excel; del 4.º en adelante, criterios calculados en servidor.'}
                   </p>
                   {empatesResumen.gruposConEmpate > 0 && (
                     <p className="mt-2 text-xs font-medium text-amber-900/95 rounded-md border border-amber-200 bg-amber-100/60 px-2 py-1.5">

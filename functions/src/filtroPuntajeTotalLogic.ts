@@ -103,6 +103,14 @@ export function findPuntajeNemColumnKey(headers: string[]): string | null {
   return null
 }
 
+/** Encabezado exactamente «Puntaje RSH» (mismo texto que el export del panel). */
+export function findPuntajeRshColumnKey(headers: string[]): string | null {
+  for (const h of headers) {
+    if (normEncabezado(h) === 'puntaje rsh') return h
+  }
+  return null
+}
+
 /** Valor numérico para ordenar; celdas vacías o no numéricas van al final en orden descendente. */
 export function leerNumeroColumnaExcelEnFila(row: ExcelRevisionRow, columnKey: string | null): number {
   if (columnKey == null) return Number.NEGATIVE_INFINITY
