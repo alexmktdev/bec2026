@@ -68,8 +68,13 @@ export async function construirVistaFiltroPuntajeTotal(db: Firestore, uid: strin
   const umbralActivo = await leerUmbralFiltroPuntajeGlobal(db)
 
   let filasVista = filasBaseValidado
-  if (umbralActivo != null && puntajeKey != null) {
-    filasVista = filasConPuntajeMinimo(filasBaseValidado, puntajeKey, umbralActivo)
+  if (umbralActivo != null) {
+    if (puntajeKey == null) {
+      // Umbral global sin columna «Puntaje total» reconocible: no hay forma de aplicar el corte solo con esa columna.
+      filasVista = []
+    } else {
+      filasVista = filasConPuntajeMinimo(filasBaseValidado, puntajeKey, umbralActivo)
+    }
   }
 
   return {

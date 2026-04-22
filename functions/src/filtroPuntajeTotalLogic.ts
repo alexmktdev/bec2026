@@ -84,26 +84,59 @@ export function findEstadoRevisionColumnKey(headers: string[], rows: ExcelRevisi
   return tier[0] ?? candidates[0]
 }
 
+/**
+ * Únicamente la columna con encabezado exactamente «Puntaje Total» (mismo texto que el export del panel).
+ * No se usan variantes tipo «Puntaje Total (2)» ni otras columnas parecidas.
+ */
 export function findPuntajeTotalColumnKey(headers: string[]): string | null {
   for (const h of headers) {
-    const n = normEncabezado(h)
-    if (n === 'puntaje total' || n === 'pt. total') return h
-  }
-  for (const h of headers) {
-    const n = normEncabezado(h)
-    if (n.includes('puntaje') && n.includes('total')) return h
+    if (normEncabezado(h) === 'puntaje total') return h
   }
   return null
 }
 
-/** Solo filas con Estado «Validado» (mayúsculas/espacios); no «Rechazado» ni otros. */
+/** Encabezado exactamente «Puntaje NEM» (mismo texto que el export del panel). */
+export function findPuntajeNemColumnKey(headers: string[]): string | null {
+  for (const h of headers) {
+    if (normEncabezado(h) === 'puntaje nem') return h
+  }
+  return null
+}
+
+/** Valor numérico para ordenar; celdas vacías o no numéricas van al final en orden descendente. */
+export function leerNumeroColumnaExcelEnFila(row: ExcelRevisionRow, columnKey: string | null): number {
+  if (columnKey == null) return Number.NEGATIVE_INFINITY
+  const v = parsePuntajeTotalCelda(String(row[columnKey] ?? ''))
+  return v ?? Number.NEGATIVE_INFINITY
+}
+
+export function leerNumeroColumnaExcelPostulante(
+  filasVista: ExcelRevisionRow[],
+  p: Record<string, unknown>,
+  columnKey: string | null,
+): number {
+  const idx = (p as { __origIdx?: number }).__origIdx
+  if (typeof idx !== 'number' || idx < 0 || idx >= filasVista.length) return Number.NEGATIVE_INFINITY
+  return leerNumeroColumnaExcelEnFila(filasVista[idx], columnKey)
+}
+
+/**
+ * Filas con Estado «Validado» en la planilla (misma interpretación amplia que el cliente:
+ * Validado/Validada, DOC. VALIDADA, etc.).
+ */
 export function celdaEsEstadoValidado(raw: string): boolean {
   const t = raw
     .trim()
     .toLowerCase()
     .normalize('NFD')
     .replace(/\p{M}/gu, '')
-  return t === 'validado'
+    .replace(/\./g, ' ')
+    .replace(/\s+/g, ' ')
+    .trim()
+  if (t === 'validado' || t === 'validada') return true
+  if (t === 'doc validada' || t === 'doc validado') return true
+  if (t === 'documentacion validada') return true
+  return false
 }
 
 export function parsePuntajeTotalCelda(raw: string): number | null {

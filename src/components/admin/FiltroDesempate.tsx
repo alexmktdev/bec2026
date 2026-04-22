@@ -190,10 +190,12 @@ export function FiltroDesempate() {
                 La <strong>entrada</strong> es la misma tabla que en <strong>Filtrado por puntaje total</strong>: filas con
                 Estado «Validado» y, si el superadmin definió umbral global, solo quienes cumplen el puntaje mínimo. Los
                 datos se leen del Excel guardado en Firestore con <strong>su usuario</strong> y se cruzan con los
-                postulantes del sistema por <strong>RUT</strong>. El ranking y los empates los calcula el backend con
-                criterios acumulables:{' '}
+                postulantes del sistema por <strong>RUT</strong>. El orden principal usa solo las columnas del Excel con
+                encabezados exactos <strong>Puntaje Total</strong> y (a partir del 2.º filtro){' '}
+                <strong>Puntaje NEM</strong>, ambas en descendente (mayor primero). Los niveles siguientes (RSH, etc.)
+                siguen usando los puntajes calculados en servidor:{' '}
                 <strong>
-                  puntaje total ↓ → puntaje NEM ↓ → puntaje RSH ↓ → puntaje enfermedad ↓ → puntaje hermanos/hijos ↓ →
+                  Puntaje Total (Excel) ↓ → Puntaje NEM (Excel) ↓ → puntaje RSH ↓ → enfermedad ↓ → hermanos/hijos ↓ →
                   fecha/hora ↓
                 </strong>
                 .
@@ -274,8 +276,8 @@ export function FiltroDesempate() {
                   </p>
                   <p className="mt-1 text-xs text-slate-600">
                     {criterioSeleccionado === 'none'
-                      ? 'Solo se ordena por puntaje total (descendente).'
-                      : 'Cada vez que subes un nivel en el menú, se excluyen de “empate” quienes ya se diferenciaron por NEM, RSH, etc.'}
+                      ? 'Solo se ordena por la columna «Puntaje Total» del Excel (descendente).'
+                      : 'Cada vez que subes un nivel en el menú, se afinan los empates (2.º nivel: solo columna «Puntaje NEM» del Excel; niveles siguientes: criterios del servidor).'}
                   </p>
                   {empatesResumen.gruposConEmpate > 0 && (
                     <p className="mt-2 text-xs font-medium text-amber-900/95 rounded-md border border-amber-200 bg-amber-100/60 px-2 py-1.5">
