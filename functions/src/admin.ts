@@ -13,6 +13,7 @@ import { calcularPuntajeTotal } from '../../src/postulacion/shared/scoring'
 import { construirVistaFiltroPuntajeTotal, type VistaFiltroPuntajeTotal } from './filtroPuntajeTotalVista'
 import {
   findPuntajeEnfermedadColumnKey,
+  findPuntajeHermanosColumnKey,
   findPuntajeNemColumnKey,
   findPuntajeRshColumnKey,
   findPuntajeTotalColumnKey,
@@ -411,7 +412,7 @@ function nivelIncluye(nivelHasta: NivelDesempate | null, criterio: NivelDesempat
 
 /**
  * Clave de igualdad para detectar empates (misma lógica que el orden).
- * Hasta el 4.º nivel: solo columnas Excel «Puntaje Total», «Puntaje NEM», «Puntaje RSH», «Puntaje Enfermedad».
+ * Hasta el 5.º nivel: columnas Excel «Puntaje Total» … «Puntaje Hermanos»; el 6.º usa fecha/hora.
  */
 function claveEmpateAcumulado(
   p: Record<string, unknown>,
@@ -421,6 +422,7 @@ function claveEmpateAcumulado(
   keyNem: string | null,
   keyRsh: string | null,
   keyEnfermedad: string | null,
+  keyHermanos: string | null,
 ): string {
   const tVal = leerNumeroColumnaExcelPostulante(vista.filasVista, p, keyTotal)
   const parts: string[] = [`t:${tVal}`]
@@ -437,8 +439,10 @@ function claveEmpateAcumulado(
     const eVal = leerNumeroColumnaExcelPostulante(vista.filasVista, p, keyEnfermedad)
     parts.push(`e:${eVal}`)
   }
-  const puntaje = calcularPuntajeTotal(p as unknown as PostulanteData)
-  if (nivelIncluye(criterioHasta, 'hermanos')) parts.push(`h:${puntaje.hermanos ?? 0}`)
+  if (nivelIncluye(criterioHasta, 'hermanos')) {
+    const hVal = leerNumeroColumnaExcelPostulante(vista.filasVista, p, keyHermanos)
+    parts.push(`h:${hVal}`)
+  }
   if (nivelIncluye(criterioHasta, 'fecha')) parts.push(`d:${registrationTimestamp(p)}`)
   return parts.join('|')
 }
@@ -457,6 +461,7 @@ function calcularEmpatesResumen(
   keyNem: string | null,
   keyRsh: string | null,
   keyEnfermedad: string | null,
+  keyHermanos: string | null,
 ): {
   gruposConEmpate: number
   postulantesEnEmpate: number
@@ -465,7 +470,7 @@ function calcularEmpatesResumen(
 } {
   const map = new Map<string, Record<string, unknown>[]>()
   for (const p of postulantes) {
-    const k = claveEmpateAcumulado(p, criterioHasta, vista, keyTotal, keyNem, keyRsh, keyEnfermedad)
+    const k = claveEmpateAcumulado(p, criterioHasta, vista, keyTotal, keyNem, keyRsh, keyEnfermedad, keyHermanos)
     if (!map.has(k)) map.set(k, [])
     map.get(k)!.push(p)
   }
@@ -548,13 +553,14 @@ function serializarParaCallable(data: unknown): unknown {
  * Nivel nem: desempate con columna Excel «Puntaje NEM» (desc).
  * Nivel rsh: desempate con columna Excel «Puntaje RSH» (desc).
  * Nivel enfermedad: desempate con columna Excel «Puntaje Enfermedad» (desc).
- * Niveles hermanos+: puntajes calculados en servidor.
+ * Nivel hermanos: desempate con columna Excel «Puntaje Hermanos» (desc).
+ * Nivel fecha: fecha/hora de postulación (sin columna de puntaje en Excel).
  * Nivel seleccionable acumulable:
  * - nem: + Puntaje NEM en Excel (desc)
  * - rsh: + Puntaje RSH en Excel (desc), tras Total y NEM en Excel
  * - enfermedad: + Puntaje Enfermedad en Excel (desc), tras Total, NEM y RSH en Excel
- * - hermanos: + anteriores + Puntaje hermanos/hijos (desc)
- * - fecha: + anteriores + Fecha/hora de postulación (desc)
+ * - hermanos: + Puntaje Hermanos en Excel (desc), tras los anteriores en Excel
+ * - fecha: + Fecha/hora de postulación (desc)
  */
 export const obtenerRankingDesempateAdmin = onCall(
   { ...webCallableBase(), memory: '512MiB', timeoutSeconds: 60, maxInstances: 10 },
@@ -612,6 +618,7 @@ export const obtenerRankingDesempateAdmin = onCall(
       const keyPuntajeNemExcel = findPuntajeNemColumnKey(vista.headers)
       const keyPuntajeRshExcel = findPuntajeRshColumnKey(vista.headers)
       const keyPuntajeEnfermedadExcel = findPuntajeEnfermedadColumnKey(vista.headers)
+      const keyPuntajeHermanosExcel = findPuntajeHermanosColumnKey(vista.headers)
 
       const ranking = [...elegibles].sort((a, b) => {
         const totalA = leerNumeroColumnaExcelPostulante(vista.filasVista, a, keyPuntajeTotalExcel)
@@ -636,13 +643,10 @@ export const obtenerRankingDesempateAdmin = onCall(
           if (diseaseA !== diseaseB) return diseaseB - diseaseA
         }
 
-        const puntajeA = calcularPuntajeTotal(a as unknown as PostulanteData)
-        const puntajeB = calcularPuntajeTotal(b as unknown as PostulanteData)
-
         if (nivelIncluye(criterioHasta, 'hermanos')) {
-          const siblingsA = puntajeA.hermanos ?? 0
-          const siblingsB = puntajeB.hermanos ?? 0
-          if (siblingsA !== siblingsB) return siblingsB - siblingsA
+          const hA = leerNumeroColumnaExcelPostulante(vista.filasVista, a, keyPuntajeHermanosExcel)
+          const hB = leerNumeroColumnaExcelPostulante(vista.filasVista, b, keyPuntajeHermanosExcel)
+          if (hA !== hB) return hB - hA
         }
 
         if (nivelIncluye(criterioHasta, 'fecha')) {
@@ -662,6 +666,7 @@ export const obtenerRankingDesempateAdmin = onCall(
         keyPuntajeNemExcel,
         keyPuntajeRshExcel,
         keyPuntajeEnfermedadExcel,
+        keyPuntajeHermanosExcel,
       )
 
       const postulantesJson = ranking.map((p) => {

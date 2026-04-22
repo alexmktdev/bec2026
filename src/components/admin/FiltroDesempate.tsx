@@ -52,9 +52,9 @@ function descripcionClaveEmpate(criterio: CriterioDesempate | 'none'): string {
     case 'enfermedad':
       return 'mismos valores en «Puntaje Total», «Puntaje NEM», «Puntaje RSH» y «Puntaje Enfermedad» del Excel'
     case 'hermanos':
-      return 'mismos criterios anteriores y mismo puntaje hermanos/hijos calculado'
+      return 'mismos valores en «Puntaje Total», «Puntaje NEM», «Puntaje RSH», «Puntaje Enfermedad» y «Puntaje Hermanos» del Excel'
     case 'fecha':
-      return 'mismos criterios anteriores y misma fecha/hora de postulación'
+      return 'mismos cinco puntajes anteriores en Excel y misma fecha/hora de postulación'
     default:
       return 'los criterios aplicados'
   }
@@ -192,11 +192,11 @@ export function FiltroDesempate() {
                 datos se leen del Excel guardado en Firestore con <strong>su usuario</strong> y se cruzan con los
                 postulantes del sistema por <strong>RUT</strong>. El orden principal usa solo las columnas del Excel con
                 encabezados exactos <strong>Puntaje Total</strong>, <strong>Puntaje NEM</strong>,{' '}
-                <strong>Puntaje RSH</strong> y <strong>Puntaje Enfermedad</strong> (hasta el 4.º filtro), todos en
-                descendente. Desde el 5.º nivel se usan puntajes calculados en servidor:{' '}
+                <strong>Puntaje RSH</strong>, <strong>Puntaje Enfermedad</strong> y <strong>Puntaje Hermanos</strong>{' '}
+                (hasta el 5.º filtro), todos en descendente. El 6.º nivel usa solo fecha/hora de postulación:{' '}
                 <strong>
                   Puntaje Total (Excel) ↓ → Puntaje NEM (Excel) ↓ → Puntaje RSH (Excel) ↓ → Puntaje Enfermedad (Excel) ↓ →
-                  hermanos/hijos ↓ → fecha/hora ↓
+                  Puntaje Hermanos (Excel) ↓ → fecha/hora ↓
                 </strong>
                 .
               </p>
@@ -277,7 +277,7 @@ export function FiltroDesempate() {
                   <p className="mt-1 text-xs text-slate-600">
                     {criterioSeleccionado === 'none'
                       ? 'Solo se ordena por la columna «Puntaje Total» del Excel (descendente).'
-                      : 'Cada nivel añade un desempate en el Excel: 2.º «Puntaje NEM», 3.er «Puntaje RSH», 4.º «Puntaje Enfermedad»; del 5.º en adelante, criterios calculados en servidor.'}
+                      : 'Cada nivel añade un desempate en el Excel: 2.º «Puntaje NEM», 3.er «Puntaje RSH», 4.º «Puntaje Enfermedad», 5.º «Puntaje Hermanos»; el 6.º es fecha/hora.'}
                   </p>
                   {empatesResumen.gruposConEmpate > 0 && (
                     <p className="mt-2 text-xs font-medium text-amber-900/95 rounded-md border border-amber-200 bg-amber-100/60 px-2 py-1.5">
