@@ -54,7 +54,7 @@ function descripcionClaveEmpate(criterio: CriterioDesempate | 'none'): string {
     case 'hermanos':
       return 'mismos valores en «Puntaje Total», «Puntaje NEM», «Puntaje RSH», «Puntaje Enfermedad» y «Puntaje Hermanos» del Excel'
     case 'fecha':
-      return 'mismos cinco puntajes anteriores en Excel y misma fecha/hora de postulación'
+      return 'mismos puntajes en Excel (Total…Hermanos) y misma fecha y hora en columna «Fecha Registro»'
     default:
       return 'los criterios aplicados'
   }
@@ -193,10 +193,12 @@ export function FiltroDesempate() {
                 postulantes del sistema por <strong>RUT</strong>. El orden principal usa solo las columnas del Excel con
                 encabezados exactos <strong>Puntaje Total</strong>, <strong>Puntaje NEM</strong>,{' '}
                 <strong>Puntaje RSH</strong>, <strong>Puntaje Enfermedad</strong> y <strong>Puntaje Hermanos</strong>{' '}
-                (hasta el 5.º filtro), todos en descendente. El 6.º nivel usa solo fecha/hora de postulación:{' '}
+                (hasta el 5.º filtro), todos en descendente. El 6.º nivel usa la columna <strong>Fecha Registro</strong>{' '}
+                del Excel (fecha y hora en la celda): <strong>quien postuló antes queda más arriba</strong>; los que
+                postularon después van bajando. Orden:{' '}
                 <strong>
                   Puntaje Total (Excel) ↓ → Puntaje NEM (Excel) ↓ → Puntaje RSH (Excel) ↓ → Puntaje Enfermedad (Excel) ↓ →
-                  Puntaje Hermanos (Excel) ↓ → fecha/hora ↓
+                  Puntaje Hermanos (Excel) ↓ → Fecha Registro (Excel, antes ↑ / después ↓)
                 </strong>
                 .
               </p>
@@ -277,7 +279,7 @@ export function FiltroDesempate() {
                   <p className="mt-1 text-xs text-slate-600">
                     {criterioSeleccionado === 'none'
                       ? 'Solo se ordena por la columna «Puntaje Total» del Excel (descendente).'
-                      : 'Cada nivel añade un desempate en el Excel: 2.º «Puntaje NEM», 3.er «Puntaje RSH», 4.º «Puntaje Enfermedad», 5.º «Puntaje Hermanos»; el 6.º es fecha/hora.'}
+                      : 'Cada nivel añade un desempate en el Excel: 2.º «Puntaje NEM», 3.er «Puntaje RSH», 4.º «Puntaje Enfermedad», 5.º «Puntaje Hermanos», 6.º «Fecha Registro» (antes arriba, después abajo).'}
                   </p>
                   {empatesResumen.gruposConEmpate > 0 && (
                     <p className="mt-2 text-xs font-medium text-amber-900/95 rounded-md border border-amber-200 bg-amber-100/60 px-2 py-1.5">

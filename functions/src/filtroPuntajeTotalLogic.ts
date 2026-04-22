@@ -127,6 +127,49 @@ export function findPuntajeHermanosColumnKey(headers: string[]): string | null {
   return null
 }
 
+/**
+ * Columna de fecha y hora de registro: «Fecha Registro» (export del panel) o «Fecha de Registro».
+ */
+export function findFechaRegistroColumnKey(headers: string[]): string | null {
+  for (const h of headers) {
+    const n = normEncabezado(h)
+    if (n === 'fecha registro' || n === 'fecha de registro') return h
+  }
+  return null
+}
+
+/**
+ * Interpreta celdas tipo export (p. ej. 06-04-2026 14.30 hrs) u otras reconocibles por Date.parse.
+ * Vacío o inválido → +∞ (en desempate por fecha van al final, como “postularon después”).
+ */
+export function parseFechaRegistroCeldaToTimestampMs(raw: string): number {
+  const t = raw.trim()
+  if (!t) return Number.MAX_SAFE_INTEGER
+  const m = t.match(/^(\d{1,2})-(\d{1,2})-(\d{4})\s+(\d{1,2})\.(\d{2})\s*hrs?/i)
+  if (m) {
+    const dd = m[1].padStart(2, '0')
+    const mm = m[2].padStart(2, '0')
+    const yyyy = m[3]
+    const HH = m[4].padStart(2, '0')
+    const min = m[5]
+    const ms = Date.parse(`${yyyy}-${mm}-${dd}T${HH}:${min}:00`)
+    return Number.isFinite(ms) ? ms : Number.MAX_SAFE_INTEGER
+  }
+  const d = Date.parse(t)
+  return Number.isFinite(d) ? d : Number.MAX_SAFE_INTEGER
+}
+
+export function leerFechaRegistroExcelPostulante(
+  filasVista: ExcelRevisionRow[],
+  p: Record<string, unknown>,
+  columnKey: string | null,
+): number {
+  if (columnKey == null) return Number.MAX_SAFE_INTEGER
+  const idx = (p as { __origIdx?: number }).__origIdx
+  if (typeof idx !== 'number' || idx < 0 || idx >= filasVista.length) return Number.MAX_SAFE_INTEGER
+  return parseFechaRegistroCeldaToTimestampMs(String(filasVista[idx][columnKey] ?? ''))
+}
+
 /** Valor numérico para ordenar; celdas vacías o no numéricas van al final en orden descendente. */
 export function leerNumeroColumnaExcelEnFila(row: ExcelRevisionRow, columnKey: string | null): number {
   if (columnKey == null) return Number.NEGATIVE_INFINITY

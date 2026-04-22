@@ -12,11 +12,13 @@ import { webCallableBase } from './httpsCallableDefaults'
 import { calcularPuntajeTotal } from '../../src/postulacion/shared/scoring'
 import { construirVistaFiltroPuntajeTotal, type VistaFiltroPuntajeTotal } from './filtroPuntajeTotalVista'
 import {
+  findFechaRegistroColumnKey,
   findPuntajeEnfermedadColumnKey,
   findPuntajeHermanosColumnKey,
   findPuntajeNemColumnKey,
   findPuntajeRshColumnKey,
   findPuntajeTotalColumnKey,
+  leerFechaRegistroExcelPostulante,
   leerNumeroColumnaExcelPostulante,
 } from './filtroPuntajeTotalLogic'
 import { postulantesParaRankingDesdeVistaPuntaje } from './desempateDesdeVistaPuntaje'
@@ -412,7 +414,7 @@ function nivelIncluye(nivelHasta: NivelDesempate | null, criterio: NivelDesempat
 
 /**
  * Clave de igualdad para detectar empates (misma lógica que el orden).
- * Hasta el 5.º nivel: columnas Excel «Puntaje Total» … «Puntaje Hermanos»; el 6.º usa fecha/hora.
+ * Hasta el 6.º nivel: mismas columnas Excel + «Fecha Registro» (fecha y hora en la celda).
  */
 function claveEmpateAcumulado(
   p: Record<string, unknown>,
@@ -423,6 +425,7 @@ function claveEmpateAcumulado(
   keyRsh: string | null,
   keyEnfermedad: string | null,
   keyHermanos: string | null,
+  keyFechaRegistro: string | null,
 ): string {
   const tVal = leerNumeroColumnaExcelPostulante(vista.filasVista, p, keyTotal)
   const parts: string[] = [`t:${tVal}`]
@@ -443,7 +446,10 @@ function claveEmpateAcumulado(
     const hVal = leerNumeroColumnaExcelPostulante(vista.filasVista, p, keyHermanos)
     parts.push(`h:${hVal}`)
   }
-  if (nivelIncluye(criterioHasta, 'fecha')) parts.push(`d:${registrationTimestamp(p)}`)
+  if (nivelIncluye(criterioHasta, 'fecha')) {
+    const dVal = leerFechaRegistroExcelPostulante(vista.filasVista, p, keyFechaRegistro)
+    parts.push(`d:${dVal}`)
+  }
   return parts.join('|')
 }
 
@@ -462,6 +468,7 @@ function calcularEmpatesResumen(
   keyRsh: string | null,
   keyEnfermedad: string | null,
   keyHermanos: string | null,
+  keyFechaRegistro: string | null,
 ): {
   gruposConEmpate: number
   postulantesEnEmpate: number
@@ -470,7 +477,17 @@ function calcularEmpatesResumen(
 } {
   const map = new Map<string, Record<string, unknown>[]>()
   for (const p of postulantes) {
-    const k = claveEmpateAcumulado(p, criterioHasta, vista, keyTotal, keyNem, keyRsh, keyEnfermedad, keyHermanos)
+    const k = claveEmpateAcumulado(
+      p,
+      criterioHasta,
+      vista,
+      keyTotal,
+      keyNem,
+      keyRsh,
+      keyEnfermedad,
+      keyHermanos,
+      keyFechaRegistro,
+    )
     if (!map.has(k)) map.set(k, [])
     map.get(k)!.push(p)
   }
@@ -499,17 +516,6 @@ function calcularEmpatesResumen(
   }
   detalleGrupos.sort((a, b) => b.puntajeTotal - a.puntajeTotal)
   return { gruposConEmpate, postulantesEnEmpate, detalleGrupos }
-}
-
-function registrationTimestamp(raw: Record<string, unknown>): number {
-  const fecha = String(raw.fechaPostulacion ?? '').trim()
-  const hora = String(raw.horaPostulacion ?? '').trim() || '00:00:00'
-  const isoLike = fecha ? `${fecha}T${hora}` : ''
-  const fromForm = isoLike ? Date.parse(isoLike) : NaN
-  if (Number.isFinite(fromForm)) return fromForm
-  const fromCreatedAt = Date.parse(String(raw.createdAt ?? ''))
-  if (Number.isFinite(fromCreatedAt)) return fromCreatedAt
-  return Number.MAX_SAFE_INTEGER
 }
 
 /**
@@ -554,13 +560,13 @@ function serializarParaCallable(data: unknown): unknown {
  * Nivel rsh: desempate con columna Excel «Puntaje RSH» (desc).
  * Nivel enfermedad: desempate con columna Excel «Puntaje Enfermedad» (desc).
  * Nivel hermanos: desempate con columna Excel «Puntaje Hermanos» (desc).
- * Nivel fecha: fecha/hora de postulación (sin columna de puntaje en Excel).
+ * Nivel fecha: columna Excel «Fecha Registro» (fecha+hora); quien postuló antes (timestamp menor) va arriba.
  * Nivel seleccionable acumulable:
  * - nem: + Puntaje NEM en Excel (desc)
  * - rsh: + Puntaje RSH en Excel (desc), tras Total y NEM en Excel
  * - enfermedad: + Puntaje Enfermedad en Excel (desc), tras Total, NEM y RSH en Excel
  * - hermanos: + Puntaje Hermanos en Excel (desc), tras los anteriores en Excel
- * - fecha: + Fecha/hora de postulación (desc)
+ * - fecha: + Fecha y hora en celda «Fecha Registro» (asc: antes → mejor puesto)
  */
 export const obtenerRankingDesempateAdmin = onCall(
   { ...webCallableBase(), memory: '512MiB', timeoutSeconds: 60, maxInstances: 10 },
@@ -619,6 +625,7 @@ export const obtenerRankingDesempateAdmin = onCall(
       const keyPuntajeRshExcel = findPuntajeRshColumnKey(vista.headers)
       const keyPuntajeEnfermedadExcel = findPuntajeEnfermedadColumnKey(vista.headers)
       const keyPuntajeHermanosExcel = findPuntajeHermanosColumnKey(vista.headers)
+      const keyFechaRegistroExcel = findFechaRegistroColumnKey(vista.headers)
 
       const ranking = [...elegibles].sort((a, b) => {
         const totalA = leerNumeroColumnaExcelPostulante(vista.filasVista, a, keyPuntajeTotalExcel)
@@ -650,8 +657,8 @@ export const obtenerRankingDesempateAdmin = onCall(
         }
 
         if (nivelIncluye(criterioHasta, 'fecha')) {
-          const dateA = registrationTimestamp(a)
-          const dateB = registrationTimestamp(b)
+          const dateA = leerFechaRegistroExcelPostulante(vista.filasVista, a, keyFechaRegistroExcel)
+          const dateB = leerFechaRegistroExcelPostulante(vista.filasVista, b, keyFechaRegistroExcel)
           if (dateA !== dateB) return dateA - dateB
         }
 
@@ -667,6 +674,7 @@ export const obtenerRankingDesempateAdmin = onCall(
         keyPuntajeRshExcel,
         keyPuntajeEnfermedadExcel,
         keyPuntajeHermanosExcel,
+        keyFechaRegistroExcel,
       )
 
       const postulantesJson = ranking.map((p) => {
