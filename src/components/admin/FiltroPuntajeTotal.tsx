@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState } from 'react'
+import { useCallback, useEffect, useState } from 'react'
 import { Link } from 'react-router-dom'
 import { saveAs } from 'file-saver'
 import { AdminLayout } from './AdminLayout'
@@ -11,14 +11,9 @@ import {
   obtenerVistaFiltroPuntajeTotal,
   type VistaFiltroPuntajeTotal,
 } from '../../services/filtroPuntajeTotalService'
-import { exportarExcelRevisionTabla, type ExcelRevisionParseResult } from '../../services/excelRevisionImport'
-import {
-  filasConPuntajeTotalColumnaMinimo,
-  findColumnaPuntajeTotalEstricta,
-} from '../../utils/puntajeTotalColumnaEstricta'
+import type { ExcelRevisionParseResult } from '../../services/excelRevisionImport'
 
 const UMBRALES = [40, 50, 60, 70, 80] as const
-const UMBRAL_FILTRO_LOCAL_PUNTAJE_TOTAL = 60
 
 function rolEsSuperadmin(role: string | undefined): boolean {
   return (role ?? '').toLowerCase().trim() === 'superadmin'
@@ -36,8 +31,6 @@ export function FiltroPuntajeTotal() {
   const [quitando, setQuitando] = useState(false)
   const [exportando, setExportando] = useState(false)
   const [modalFiltroOk, setModalFiltroOk] = useState(false)
-  /** Filtro de esta pestaña: solo columna exacta «Puntaje Total» ≥ 60 (solo filas ya en Estado Validado). */
-  const [filtroPuntaje60Activo, setFiltroPuntaje60Activo] = useState(false)
 
   const cargarVista = useCallback(async () => {
     setLoading(true)
@@ -45,7 +38,6 @@ export function FiltroPuntajeTotal() {
     try {
       const v = await obtenerVistaFiltroPuntajeTotal()
       setVista(v)
-      setFiltroPuntaje60Activo(false)
       if (v.umbralActivo != null) setUmbralSeleccionado(v.umbralActivo)
     } catch (e) {
       console.error(e)
@@ -74,7 +66,6 @@ export function FiltroPuntajeTotal() {
     try {
       const v = await aplicarUmbralFiltroPuntajeTotal(umbralSeleccionado)
       setVista(v)
-      setFiltroPuntaje60Activo(false)
       setModalFiltroOk(true)
       window.setTimeout(() => setModalFiltroOk(false), 2200)
     } catch (e) {
@@ -96,7 +87,6 @@ export function FiltroPuntajeTotal() {
     try {
       const v = await limpiarUmbralFiltroPuntajeTotal()
       setVista(v)
-      setFiltroPuntaje60Activo(false)
     } catch (e) {
       const msg =
         e && typeof e === 'object' && 'message' in e && typeof (e as { message: unknown }).message === 'string'
@@ -108,47 +98,11 @@ export function FiltroPuntajeTotal() {
     }
   }
 
-  const columnaPuntajeTotalEstricta = useMemo(() => {
-    if (!vista?.headers.length) return null
-    return findColumnaPuntajeTotalEstricta(vista.headers)
-  }, [vista?.headers])
-
-  const filasSubsetTabla = useMemo(() => {
-    if (!vista) return undefined
-    if (filtroPuntaje60Activo) {
-      if (!columnaPuntajeTotalEstricta) return []
-      return filasConPuntajeTotalColumnaMinimo(
-        vista.filasBaseValidado,
-        columnaPuntajeTotalEstricta,
-        UMBRAL_FILTRO_LOCAL_PUNTAJE_TOTAL,
-      )
-    }
-    if (vista.umbralActivo != null) return vista.filasVista
-    return undefined
-  }, [vista, filtroPuntaje60Activo, columnaPuntajeTotalEstricta])
-
-  const cantidadFilasTabla =
-    filasSubsetTabla === undefined ? (vista?.filasBaseValidado.length ?? 0) : filasSubsetTabla.length
-
   async function handleExportarExcel() {
-    if (exportando || !vista) return
+    if (exportando) return
     setExportando(true)
     setError(null)
     try {
-      if (filtroPuntaje60Activo && columnaPuntajeTotalEstricta && filasSubsetTabla && filasSubsetTabla.length > 0) {
-        const data: ExcelRevisionParseResult = {
-          headers: vista.headers,
-          rows: filasSubsetTabla,
-          sheetName: vista.sheetName || 'Hoja1',
-          coincideConPlantillaExport: vista.coincideConPlantillaExport,
-          persistedAt: vista.persistedAt ?? undefined,
-        }
-        await exportarExcelRevisionTabla(data, {
-          nombreArchivoBase: `filtro_puntaje_total_${UMBRAL_FILTRO_LOCAL_PUNTAJE_TOTAL}`,
-          nombreHoja: `Puntaje Total ≥${UMBRAL_FILTRO_LOCAL_PUNTAJE_TOTAL}`,
-        })
-        return
-      }
       const { blob, filename } = await exportarExcelFiltroPuntajeTotalDesdeServidor()
       saveAs(blob, filename)
     } catch (e) {
@@ -180,9 +134,8 @@ export function FiltroPuntajeTotal() {
           <div className="mb-3 rounded-lg border border-blue-200 bg-blue-50/80 p-3 text-xs text-blue-900 leading-relaxed">
             <strong>Orden del proceso:</strong> en <strong>Revisión de documentos</strong> se marca cada fila del Excel con
             <strong> Estado</strong> «Validado» o «Rechazado». En esta pestaña solo se consideran quienes figuran como{' '}
-            <strong>Validado</strong>.             Use el botón <strong>Filtrar por Puntaje Total ≥ 60</strong> para dejar solo filas validadas cuyo valor
-            numérico en la columna exacta <strong>Puntaje Total</strong> sea mayor o igual a 60 (no se usan otras
-            columnas). Opcionalmente el superadmin puede guardar otro umbral en el servidor para el resto del flujo.
+            <strong>Validado</strong>. Puede aplicarse un <strong>umbral de puntaje total</strong> en el servidor (solo
+            superadmin): la tabla y el Excel exportado reflejan lo que calcula el backend según la columna «Puntaje Total».
           </div>
           <h2 className="text-sm font-bold uppercase text-slate-700 mb-2">Cómo se calcula el puntaje total</h2>
           <div className="grid grid-cols-1 gap-3 md:grid-cols-2">
@@ -215,8 +168,8 @@ export function FiltroPuntajeTotal() {
               Puntaje total = NEM + RSH + Enfermedad + Hermanos/Hijos (máximo 100 pts).
             </p>
             <p className="text-xs text-blue-700 mt-2 font-medium">
-              El filtro ≥ 60 se aplica en el navegador leyendo únicamente la celda bajo el encabezado «Puntaje Total». El
-              umbral global del servidor (si existe) es independiente y solo superadmin lo modifica.
+              El umbral global lo guarda el servidor; solo superadmin puede aplicarlo o quitarlo. La tabla se arma desde el
+              backend al cargar o al cambiar el filtro.
             </p>
           </div>
         </div>
@@ -229,43 +182,6 @@ export function FiltroPuntajeTotal() {
         )}
 
         <div className="flex flex-col gap-4 rounded-xl border border-slate-200 bg-white p-4 sm:flex-row sm:flex-wrap sm:items-end">
-          <div className="flex flex-col gap-2 w-full sm:w-auto border-b border-slate-100 sm:border-0 pb-3 sm:pb-0">
-            <p className="text-[10px] font-bold uppercase tracking-widest text-slate-500">Filtro de esta pestaña</p>
-            <div className="flex flex-wrap gap-2 items-center">
-              <button
-                type="button"
-                onClick={() => {
-                  if (!columnaPuntajeTotalEstricta) {
-                    setError('No hay columna con encabezado exacto «Puntaje Total» en el Excel.')
-                    return
-                  }
-                  setError(null)
-                  setFiltroPuntaje60Activo(true)
-                }}
-                disabled={loading || !vista || vista.sinExcel || vista.totalValidado === 0}
-                className="rounded-xl bg-blue-800 px-5 py-3 text-sm font-semibold text-white shadow-sm hover:bg-blue-900 disabled:opacity-50"
-              >
-                Filtrar por Puntaje Total ≥ {UMBRAL_FILTRO_LOCAL_PUNTAJE_TOTAL}
-              </button>
-              <button
-                type="button"
-                onClick={() => {
-                  setFiltroPuntaje60Activo(false)
-                  setError(null)
-                }}
-                disabled={loading || !filtroPuntaje60Activo}
-                className="rounded-xl border border-slate-300 bg-white px-4 py-3 text-sm font-semibold text-slate-700 shadow-sm hover:bg-slate-50 disabled:opacity-50"
-              >
-                Quitar filtro ≥ {UMBRAL_FILTRO_LOCAL_PUNTAJE_TOTAL}
-              </button>
-            </div>
-            {!columnaPuntajeTotalEstricta && vista && !vista.sinExcel && !vista.sinColumnaEstado ? (
-              <p className="text-[11px] text-amber-800 max-w-xl">
-                Falta una columna titulada exactamente <strong>Puntaje Total</strong> (como en el export del panel). No se
-                usan encabezados parecidos.
-              </p>
-            ) : null}
-          </div>
           <div className="flex flex-col gap-1 min-w-[14rem]">
             <label className="text-[10px] font-bold uppercase tracking-widest text-slate-500">Umbral en servidor</label>
             <select
@@ -308,7 +224,7 @@ export function FiltroPuntajeTotal() {
           <button
             type="button"
             onClick={() => void handleExportarExcel()}
-            disabled={exportando || loading || !vista || cantidadFilasTabla === 0}
+            disabled={exportando || loading || !vista || vista.filasVista.length === 0}
             className="rounded-xl bg-green-700 px-5 py-3 text-sm font-semibold text-white shadow-sm hover:bg-green-800 disabled:opacity-50"
           >
             {exportando ? 'Generando…' : 'Descargar Excel (vista actual)'}
@@ -333,15 +249,7 @@ export function FiltroPuntajeTotal() {
               <span className="text-2xl font-black tabular-nums">{vista?.totalValidado ?? '—'}</span>
               <span className="text-sm font-semibold text-blue-600 ml-1">con Estado «Validado»</span>
             </p>
-            {vista && filtroPuntaje60Activo && (
-              <p className="text-sm font-semibold text-blue-700 mt-1">
-                <span className="text-xl font-black tabular-nums">{cantidadFilasTabla}</span>
-                <span className="text-slate-600 font-medium text-sm ml-2">
-                  en tabla: columna «Puntaje Total» ≥ {UMBRAL_FILTRO_LOCAL_PUNTAJE_TOTAL} (solo esa columna)
-                </span>
-              </p>
-            )}
-            {vista && !filtroPuntaje60Activo && vista.umbralActivo != null && (
+            {vista && vista.umbralActivo != null && (
               <p className="text-sm font-semibold text-blue-700 mt-1">
                 <span className="text-xl font-black tabular-nums">{vista.filasVista.length}</span>
                 <span className="text-slate-600 font-medium text-sm ml-2">
@@ -349,8 +257,8 @@ export function FiltroPuntajeTotal() {
                 </span>
               </p>
             )}
-            {vista && !filtroPuntaje60Activo && vista.umbralActivo == null && vista.totalValidado > 0 && (
-              <p className="text-xs text-blue-700/90 mt-1">Sin filtro ≥ 60 ni umbral en servidor: todas las filas validadas.</p>
+            {vista && vista.umbralActivo == null && vista.totalValidado > 0 && (
+              <p className="text-xs text-blue-700/90 mt-1">Sin umbral en servidor: se muestran todas las filas validadas.</p>
             )}
           </div>
         </div>
@@ -398,39 +306,29 @@ export function FiltroPuntajeTotal() {
             <ExcelRevisionUploadedTable
               data={tableData}
               onClear={() => {}}
-              rowsSubset={filasSubsetTabla}
+              rowsSubset={vista.umbralActivo != null ? vista.filasVista : undefined}
               hideQuitarArchivo
               hidePersistenciaBanner
               subtituloFiltro={
                 <p>
                   Filas con <strong>Estado = Validado</strong>
-                  {filtroPuntaje60Activo ? (
-                    <>
-                      {' '}
-                      y valor en la columna <strong>Puntaje Total</strong> ≥ {UMBRAL_FILTRO_LOCAL_PUNTAJE_TOTAL} (filtro de
-                      esta pestaña; solo ese encabezado y ese número).
-                    </>
-                  ) : vista.umbralActivo != null ? (
+                  {vista.umbralActivo != null ? (
                     <>
                       {' '}
                       y <strong>Puntaje Total</strong> ≥ {vista.umbralActivo} según umbral en servidor.
                     </>
                   ) : (
-                    <> (sin filtro por puntaje en la tabla).</>
+                    <> (sin umbral de puntaje activo).</>
                   )}{' '}
-                  La búsqueda dentro de la tabla es solo visual en el navegador.
+                  Los datos provienen de Cloud Functions; la búsqueda en tabla es solo visual en el navegador.
                 </p>
               }
               mensajeVacioSinBusqueda={
                 vista.totalValidado === 0
                   ? 'Ninguna fila tiene Estado «Validado».'
-                  : filtroPuntaje60Activo
-                    ? cantidadFilasTabla === 0
-                      ? `Ninguna fila tiene en «Puntaje Total» un valor ≥ ${UMBRAL_FILTRO_LOCAL_PUNTAJE_TOTAL}.`
-                      : 'Sin resultados para la búsqueda.'
-                    : vista.umbralActivo != null && vista.filasVista.length === 0
-                      ? 'Ninguna fila cumple el umbral de puntaje en servidor.'
-                      : 'Sin resultados para la búsqueda.'
+                  : vista.umbralActivo != null && vista.filasVista.length === 0
+                    ? 'Ninguna fila cumple el umbral de puntaje en servidor.'
+                    : 'Sin resultados para la búsqueda.'
               }
             />
           </div>
