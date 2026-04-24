@@ -3,6 +3,7 @@ import { AdminLayout } from './AdminLayout'
 import { TablePagination } from './TablePagination'
 import type { PostulanteRechazadoEntrada } from '../../types/postulante'
 import { obtenerPostulantesRechazadosEntrada } from '../../services/rechazosEntradaService'
+import { exportarPostulantesRechazadosEntradaExcel } from '../../services/rechazosEntradaExcelExport'
 import { formatDateTimeDmyHm } from '../../utils/inputFormatters'
 
 const ITEMS_PER_PAGE = 10
@@ -27,6 +28,7 @@ export function PostulantesRechazadosEntrada() {
   const [q, setQ] = useState('')
   const [pagina, setPagina] = useState(1)
   const [error, setError] = useState<string | null>(null)
+  const [exportando, setExportando] = useState(false)
 
   useEffect(() => {
     setLoading(true)
@@ -67,7 +69,7 @@ export function PostulantesRechazadosEntrada() {
           </p>
         </div>
 
-        <div className="flex items-center gap-3">
+        <div className="flex flex-wrap items-center gap-3">
           <input
             type="search"
             id="rechazados-entrada-busqueda"
@@ -83,6 +85,23 @@ export function PostulantesRechazadosEntrada() {
             className="w-full max-w-md rounded-lg border border-slate-300 px-3 py-2 text-sm"
           />
           <span className="text-sm text-slate-500">{filtered.length} registros</span>
+          <button
+            type="button"
+            disabled={loading || !!error || filtered.length === 0 || exportando}
+            onClick={async () => {
+              setExportando(true)
+              try {
+                await exportarPostulantesRechazadosEntradaExcel(filtered)
+              } catch (e) {
+                setError(e instanceof Error ? e.message : 'No se pudo generar el Excel')
+              } finally {
+                setExportando(false)
+              }
+            }}
+            className="rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm font-medium text-slate-700 shadow-sm hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-50"
+          >
+            {exportando ? 'Generando…' : 'Descargar Excel'}
+          </button>
         </div>
 
         {loading ? (
